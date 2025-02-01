@@ -7,13 +7,11 @@ import numpy as np
 import paho.mqtt.client as mqtt
 import logging
 
-from constants import hostname
+from .constants import hostname, APP_ID
 
-# Set up logging for the module.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-
-APP_ID = 'UniqueAppID_for_training_sessions'
 logging.info(f'hostname:{hostname}, APP_ID:{APP_ID}')
+
 class MQTT_MessageType:
     def __init__(self, client, topic, arg_names=()):
         """
@@ -84,7 +82,7 @@ def StopPlan(client):
     return MQTT_MessageType(client, 'stop_plan')
 
 def SetTargetPower(client):
-    return MQTT_MessageType(client, 'set_target_power', arg_names=('uuid_trainer', 'target_power'))
+    return MQTT_MessageType(client, 'set_target_power', arg_names=('target_power'))
     
 def SetMeasuredPower(client):
     return MQTT_MessageType(client, 'set_measured_power', arg_names=('uuid_trainer', 'measured_power'))
@@ -94,6 +92,8 @@ def on_message(client, userdata, msg):
     logging.info(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
 
 def main():
+    # Set up logging for the module.
+    
     # Create a single MQTT client instance using MQTTv311 and Callback API version 2 to avoid deprecation warnings.
     client = mqtt.Client(
         client_id="",

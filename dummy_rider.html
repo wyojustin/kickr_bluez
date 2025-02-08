@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Dummy Rider Simulation</title>
+  <style>
+    body {
+      background-color: #222;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    p#status, p#toggleStatus {
+      font-size: 18px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+      cursor: pointer;
+    }
+  </style>
+  <!-- Include the Paho MQTT client -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+</head>
+<body>
+  <h1>Dummy Rider Simulation</h1>
+  <p id="status">Connecting to MQTT...</p>
+  <p id="toggleStatus">Simulation stopped</p>
+  <button id="toggleButton">Start Simulation</button>
+  
+  <script>
+    "use strict";
+    
+    /***********************
+     * Configurable MQTT Constants
+     ***********************/
+    const MQTT_BROKER_HOST = "mqtt.eclipseprojects.io"; // Change to "localhost" for local Mosquitto
+    const MQTT_BROKER_PORT = 80;                          // Adjust if needed (e.g., WebSocket port)
+    const APP_ID = "UniqueAppID_for_training_sessions";
+    
+    // Unique IDs for this dummy rider.
+    const clientId = "dummy_rider_" + Math.floor(Math.random() * 10000);
+    const trainerId = "trainer_123";
+    
+    /***********************
+     * Target Variables
+     ***********************/
+    let targetPower = null;    // To be set from incoming set_target_power messages.
+    let targetCadence = null;  // To be set from incoming set_target_cadence messages.
+    
+    /***********************
+     * Simulation Control Variables
+     ***********************/
+    let simulationRunning = false;
+    let measurementIntervalId = null;
+    
+    /***********************
+     * MQTT Client Setup
+     ***********************/
+    const mqttClient = new Paho.MQTT.Client(MQTT_BROKER_HOST, MQTT_BROKER_PORT, "/mqtt", clientId);
+    
+    mqttClient.onConnectionLost = function(responseObject) {
+      console.log("Connection lost: " + responseObject.errorMessage);
+      document.getElementById("status").textContent = "MQTT Connection lost";
+    };
+    
+    mqttClient.onMessageArrived = function(message) {
+      let payload = message.payloadString;
+      // Check if payload is non-empty and looks like valid JSON.
+      if (!payload || payload.trim() === "" ||
+          payload.trim()[0] !== "{" || payload.trim().slice(-1) !== "}") {
+        console.warn("Skipping message due to invalid JSON payload:", payload);
+        return;
+      }
+      
+      console.log("Message arrived on " + message.destinationName + ": " + payload);
+      try {
+        const data = JSON.parse(payload);
+        const topic = message.destinationName;
+        // Listen for target power messages.
+        if (topic.endsWith("set_target_power")) {
+          if (data.target_power !== undefined) {
+            targetPower = data.target_power;
+            console.log("Target Power set to: " + targetPower);
+          }
+        }
+        // Listen for target cadence messages.
+        else if (topic.endsWith("set_target_cadence")) {
+          if (data.target_cadence !== undefined) {
+            targetCadence = data.target_cadence;
+            console.log("Target Cadence set to: " + targetCadence);
+          }
+        }
+      } catch (err) {
+        console.error("Error parsing MQTT message:", err);
+      }
+    };
+    
+    mqttClient.connect({
+      onSuccess: function() {
+        console.log("Connected to MQTT broker");
+        document.getElementById("status").textContent = "Connected to MQTT broker";
+        mqttClient.subscribe(APP_ID + "/#");
+        
+        // Pair with trainer_123.
+        const pairPayload = JSON.stringify({
+          uuid_trainer: trainerId,
+          uuid_rider: clientId
+        });
+        const pairMsg = new Paho.MQTT.Message(pairPayload);
+        pairMsg.destinationName = APP_ID + "/pair_trainer_rider";
+        mqttClient.send(pairMsg);
+        console.log("Sent pairing message with trainer_123");
+        
+        // Register FTP of 200W.
+        const ftpPayload = JSON.stringify({
+          uuid_trainer: trainerId,
+          ftp: 200,
+          time: new Date().toISOString()
+        });
+        const ftpMsg = new Paho.MQTT.Message(ftpPayload);
+        ftpMsg.destinationName = APP_ID + "/set_ftp";
+        mqttClient.send(ftpMsg);
+        console.log("Sent FTP registration (200W)");
+      },
+      onFailure: function(message) {
+        console.log("MQTT Connection failed: " + message.errorMessage);
+        document.getElementById("status").textContent = "MQTT Connection failed";
+      }
+    });
+    
+    /***********************
+     * Normal Distribution Helper
+     ***********************/
+    // Generate a normally distributed random number using the Box-Muller transform.
+    function randn_bm() {
+      let u = 0, v = 0;
+      while (u === 0) u = Math.random(); // Converting [0,1) to (0,1)
+      while (v === 0) v = Math.random();
+      return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+    
+    /***********************
+     * Measurement Simulation
+     ***********************/
+    function simulateMeasurements() {
+      // Use default values if target values haven't been received.
+      if (targetPower === null) {
+        console.log("Target power not received; using default 100%.");
+        targetPower = 100;
+      }
+      if (targetCadence === null) {
+        console.log("Target cadence not received; using default 90 rpm.");
+        targetCadence = 90;
+      }
+      
+      // Standard deviation is 5% of the target.
+      const sigmaPower = 0.05 * targetPower;
+      const sigmaCadence = 0.05 * targetCadence;
+      
+      // Generate measured values normally distributed around the targets.
+      // Round to nearest integer.
+      const measuredPower = Math.round(targetPower + sigmaPower * randn_bm());
+      const measuredCadence = Math.round(targetCadence + sigmaCadence * randn_bm());
+      
+      // Create and send measured power message.
+      const powerPayload = JSON.stringify({
+        uuid_trainer: trainerId,
+        measured_power: measuredPower,
+        time: new Date().toISOString()
+      });
+      const powerMsg = new Paho.MQTT.Message(powerPayload);
+      powerMsg.destinationName = APP_ID + "/set_measured_power";
+      mqttClient.send(powerMsg);
+      console.log("Sent measured power: " + measuredPower);
+      
+      // Create and send measured cadence message.
+      const cadencePayload = JSON.stringify({
+        uuid_trainer: trainerId,
+        measured_cadence: measuredCadence,
+        time: new Date().toISOString()
+      });
+      const cadenceMsg = new Paho.MQTT.Message(cadencePayload);
+      cadenceMsg.destinationName = APP_ID + "/set_measured_cadence";
+      mqttClient.send(cadenceMsg);
+      console.log("Sent measured cadence: " + measuredCadence);
+    }
+    
+    /***********************
+     * Toggle Button for Simulation
+     ***********************/
+    const toggleButton = document.getElementById("toggleButton");
+    const toggleStatus = document.getElementById("toggleStatus");
+    
+    toggleButton.addEventListener("click", function() {
+      if (simulationRunning) {
+        // Stop the simulation.
+        clearInterval(measurementIntervalId);
+        simulationRunning = false;
+        toggleButton.textContent = "Start Simulation";
+        toggleStatus.textContent = "Simulation stopped";
+        console.log("Simulation stopped");
+      } else {
+        // Start the simulation.
+        measurementIntervalId = setInterval(simulateMeasurements, 1000);
+        simulationRunning = true;
+        toggleButton.textContent = "Stop Simulation";
+        toggleStatus.textContent = "Simulation running";
+        console.log("Simulation started");
+      }
+    });
+    
+    // Initialize simulationRunning flag.
+    simulationRunning = false;
+    measurementIntervalId = null;
+    
+  </script>
+</body>
+</html>

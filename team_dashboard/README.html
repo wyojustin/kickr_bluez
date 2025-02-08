@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Team Dashboard README</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      background-color: #fff;
+      color: #333;
+      margin: 20px;
+    }
+    h1, h2, h3 {
+      color: #005;
+    }
+    pre {
+      background: #f4f4f4;
+      border: 1px solid #ddd;
+      padding: 10px;
+      overflow-x: auto;
+    }
+    code {
+      font-family: Consolas, monospace;
+    }
+    ul {
+      margin-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Team Dashboard – Training Plan</h1>
+  
+  <p>
+    This project is a Progressive Web App (PWA) dashboard for displaying a cycling training plan. It shows a step‐function graph of target power percentage versus time with segments filled in vivid colors (for completed portions) and muted colors (for upcoming portions). Additionally, it overlays measured power curves for each rider (each drawn in a unique color) and displays the elapsed time and time‐to‐go.
+  </p>
+  
+  <h2>Files Included</h2>
+  <ul>
+    <li><strong>team_dashboard.html</strong> – The main HTML file containing the dashboard code, MQTT integration, and drawing routines.</li>
+    <li><strong>manifest.json</strong> – The Web App Manifest file defining the app name, icons, start URL, display mode, background color, and theme color.</li>
+    <li><strong>sw.js</strong> – A basic Service Worker script for offline caching of the app assets.</li>
+    <li><strong>Icon Files</strong> (optional): e.g., <code>icon-192.png</code> and <code>icon-512.png</code>, used for the app icon.</li>
+  </ul>
+  
+  <h2>Setup and Deployment on a Raspberry Pi</h2>
+  <p>
+    Since PWAs must be served over HTTPS (or from localhost), you cannot load the HTML file directly from the file system. A quick way to serve your files is by using Python’s built-in HTTP server.
+  </p>
+  <h3>Using Python's HTTP Server</h3>
+  <ol>
+    <li>
+      Open a terminal and navigate to your project directory:
+      <pre><code>cd /home/justin/code/kickr_bluez/team_dashboard</code></pre>
+    </li>
+    <li>
+      Start a local web server:
+      <ul>
+        <li>For Python 3:
+          <pre><code>python3 -m http.server 8080</code></pre>
+        </li>
+        <li>For Python 2:
+          <pre><code>python -m SimpleHTTPServer 8080</code></pre>
+        </li>
+      </ul>
+    </li>
+    <li>
+      Open your browser (e.g., Chromium) and navigate to:
+      <pre><code>http://localhost:8080/team_dashboard.html</code></pre>
+    </li>
+  </ol>
+  
+  <h2>Running in Kiosk Mode</h2>
+  <p>
+    To launch the dashboard in a minimal window (without the address bar or tab bar), run Chromium in kiosk mode:
+  </p>
+  <pre><code>chromium-browser --kiosk http://localhost:8080/team_dashboard.html</code></pre>
+  
+  <h2>Converting to a Progressive Web App (PWA)</h2>
+  <p>
+    To install the dashboard as a PWA so that it launches in a standalone window:
+  </p>
+  <ol>
+    <li>
+      <strong>Add a Web App Manifest:</strong> Create a file named <code>manifest.json</code> with content similar to:
+      <pre><code>{
+  "short_name": "TeamDash",
+  "name": "Team Dashboard – Training Plan",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "team_dashboard.html",
+  "display": "fullscreen",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}</code></pre>
+    </li>
+    <li>
+      <strong>Register a Service Worker:</strong> Create a file named <code>sw.js</code> with content similar to:
+      <pre><code>const CACHE_NAME = 'team-dashboard-cache-v1';
+const urlsToCache = [
+  'team_dashboard.html',
+  'manifest.json',
+  'sw.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js'
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+  );
+});
+
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request).then(response => response || fetch(event.request))
+  );
+});</code></pre>
+    </li>
+    <li>
+      <strong>Link the Manifest:</strong> Ensure your <code>team_dashboard.html</code> file contains:
+      <pre><code>&lt;link rel="manifest" href="manifest.json"&gt;</code></pre>
+    </li>
+    <li>
+      <strong>Install the PWA:</strong> Open your app URL in Chrome/Chromium. Then, either:
+      <ul>
+        <li>Click the install prompt that appears in the address bar, or</li>
+        <li>Open the Chrome menu and select "Install Team Dashboard" (or "Add to Home Screen" on Android).</li>
+      </ul>
+    </li>
+  </ol>
+  
+  <h2>How to Relaunch the PWA</h2>
+  <p>
+    Once the PWA is installed, you can relaunch it in several ways:
+  </p>
+  <ul>
+    <li>
+      <strong>App Launcher:</strong> On desktop, open Chrome Apps by navigating to <code>chrome://apps</code> and clicking on the "Team Dashboard" icon.
+    </li>
+    <li>
+      <strong>Taskbar/Desktop Shortcut:</strong> If you pinned the app, simply click the shortcut.
+    </li>
+    <li>
+      <strong>From the Command Line:</strong> Launch Chrome in app mode:
+      <pre><code>chrome --app="http://localhost:8080/team_dashboard.html"</code></pre>
+      (Replace the URL with your actual URL if needed.)
+    </li>
+  </ul>
+  
+  <h2>MQTT Integration</h2>
+  <p>
+    The dashboard subscribes to MQTT messages on the <code>UniqueAppID_for_training_sessions</code> topic. It listens for:
+  </p>
+  <ul>
+    <li><strong>send_plan</strong> – Updates the training plan. The payload should include a <code>training_plan</code> key with an array of stages.</li>
+    <li><strong>start_plan</strong> – Starts the plan and sets the start time.</li>
+    <li><strong>set_measured_power</strong> – Records measured power from riders. Each message must include a <code>measured_power</code> value and a <code>uuid_trainer</code>. The power is converted to a percentage of FTP.</li>
+    <li><strong>set_ftp</strong> – Updates a rider’s FTP (default is 100).</li>
+  </ul>
+  <p>
+    After connecting, the app sends a <strong>get_plan</strong> message (with a timestamp in the payload) to request the current training plan.
+  </p>
+  
+  <h2>Usage Summary</h2>
+  <ol>
+    <li>Serve the files using a web server (e.g., Python’s HTTP server).</li>
+    <li>Open the URL (e.g., <code>http://localhost:8080/team_dashboard.html</code>) in Chrome/Chromium.</li>
+    <li>Install the app as a PWA via the browser menu.</li>
+    <li>Relaunch the app from your application launcher, shortcut, or by using Chrome’s app mode.</li>
+    <li>Optionally, run in kiosk mode for a full-screen experience.</li>
+  </ol>
+  
+  <h2>Deployment on Raspberry Pi</h2>
+  <p>
+    Follow the instructions above on your Raspberry Pi. You can serve the app using Python’s HTTP server and then launch it in kiosk mode using Chromium.
+  </p>
+  
+  <h2>Additional Notes</h2>
+  <ul>
+    <li>The app must be served over HTTPS or from localhost to enable full PWA functionality.</li>
+    <li>If you need to remove additional browser UI on desktop, consider using Electron or a dedicated kiosk application.</li>
+  </ul>
+  
+  <p>Enjoy the Team Dashboard – Training Plan, and happy training!</p>
+  
+  <p>— Justin's Team Dashboard</p>
+  
+Here are several ways to relaunch your PWA next time:</p><ol><li><p><strong>Via the App Launcher:</strong><br>On desktop (or on Android), your installed PWA should appear in your list of installed apps. On desktop Chrome, you can type <code>chrome://apps</code> in the address bar and then click on the "Team Dashboard" icon. On Windows, it might also appear in your Start menu.</p></li><li><p><strong>Pinned to the Taskbar or Desktop:</strong><br>If you choose to pin the PWA to your taskbar or desktop, you can simply click that icon to launch the app.</p></li><li><p><strong>Using a Shortcut:</strong><br>When you install the PWA, Chrome typically creates a shortcut. Double-clicking that shortcut will open the app in its standalone window.</p></li><li><p><strong>Command Line (Optional):</strong><br>You can also launch Chrome in app mode by using the command-line flag. For example:</p><pre class="!overflow-visible"><div class="contain-inline-size rounded-md border-[0.5px] border-token-border-medium relative bg-token-sidebar-surface-primary dark:bg-gray-950"><div class="flex items-center text-token-text-secondary px-4 py-2 text-xs font-sans justify-between rounded-t-md h-9 bg-token-sidebar-surface-primary dark:bg-token-main-surface-secondary select-none">bash</div><div class="sticky top-9 md:top-[5.75rem]"><div class="absolute bottom-0 right-2 flex h-9 items-center"><div class="flex items-center rounded bg-token-sidebar-surface-primary px-2 font-sans text-xs text-token-text-secondary dark:bg-token-main-surface-secondary"><span class="" data-state="closed"><button class="flex gap-1 items-center select-none px-4 py-1" aria-label="Copy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-xs"><path fill-rule="evenodd" clip-rule="evenodd" d="M7 5C7 3.34315 8.34315 2 10 2H19C20.6569 2 22 3.34315 22 5V14C22 15.6569 20.6569 17 19 17H17V19C17 20.6569 15.6569 22 14 22H5C3.34315 22 2 20.6569 2 19V10C2 8.34315 3.34315 7 5 7H7V5ZM9 7H14C15.6569 7 17 8.34315 17 10V15H19C19.5523 15 20 14.5523 20 14V5C20 4.44772 19.5523 4 19 4H10C9.44772 4 9 4.44772 9 5V7ZM5 9C4.44772 9 4 9.44772 4 10V19C4 19.5523 4.44772 20 5 20H14C14.5523 20 15 19.5523 15 19V10C15 9.44772 14.5523 9 14 9H5Z" fill="currentColor"></path></svg>Copy</button></span></div></div></div><div class="overflow-y-auto p-4" dir="ltr"><code class="!whitespace-pre language-bash"><span>chrome --app=<span class="hljs-string">"http://your-server-address/team_dashboard.html"</span>
+</span></code></div></div></pre><p>Replace <code>http://your-server-address/team_dashboard.html</code> with your actual URL (e.g., <code>http://localhost:8080/team_dashboard.html</code> when testing locally).</p></li></ol><p>Using one of these methods, you can relaunch your PWA without needing to open a full browser window with tabs or an address bar.</p><p>Let me know if you need any further details, Justin!</p>
+</body>
+</html>

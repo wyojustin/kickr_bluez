@@ -1,0 +1,410 @@
+{
+  "workout_plans": [
+    {
+      "name": "Dummy",
+      "duration": 120,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [30, 120, 85, "Interval"],
+        [48, 60, 80, "Recovery"],
+        [60, 120, 85, "Interval"],
+        [78, 60, 80, "Recovery"],
+        [90, 50, 90, "Cooldown"],
+        [120, 0, 90, "end"]
+      ]
+    },
+    {
+      "name": "30 Minute Interval Express",
+      "duration": 1800,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 120, 85, "Interval"],
+        [480, 60, 80, "Recovery"],
+        [600, 120, 85, "Interval"],
+        [780, 60, 80, "Recovery"],
+        [900, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "30 Minute Sprint Assault",
+      "duration": 1800,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [200, 130, 85, "Sprint"],
+        [300, 50, 80, "Recovery"],
+        [400, 130, 85, "Sprint"],
+        [500, 50, 80, "Recovery"],
+        [600, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "30 Minute Quick Hit",
+      "duration": 1800,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [150, 125, 85, "Quick Hit"],
+        [240, 50, 80, "Recovery"],
+        [330, 125, 85, "Quick Hit"],
+        [420, 50, 80, "Recovery"],
+        [480, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "35 Minute Rolling Intervals",
+      "duration": 2100,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 105, 85, "Rolling Interval"],
+        [600, 60, 80, "Recovery"],
+        [900, 105, 85, "Rolling Interval"],
+        [1200, 60, 80, "Recovery"],
+        [1500, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "35 Minute Climbing Intervals",
+      "duration": 2100,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 110, 85, "Climb"],
+        [600, 60, 80, "Recovery"],
+        [900, 110, 85, "Climb"],
+        [1200, 60, 80, "Recovery"],
+        [1500, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "35 Minute Endurance Focus",
+      "duration": 2100,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 65, 85, "Steady Endurance"],
+        [900, 70, 85, "Sustained Endurance"],
+        [1500, 65, 85, "Steady Endurance"],
+        [1800, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "40 Minute Tempo Ride",
+      "duration": 2400,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 90, 85, "Tempo"],
+        [900, 100, 85, "Tempo"],
+        [1500, 90, 85, "Tempo"],
+        [1800, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "40 Minute Over-Under",
+      "duration": 2400,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 90, 85, "Over"],
+        [600, 60, 80, "Under"],
+        [900, 90, 85, "Over"],
+        [1200, 60, 80, "Under"],
+        [1500, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "45 Minute Endurance Builder",
+      "duration": 2700,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 65, 85, "Endurance"],
+        [900, 75, 85, "Steady State"],
+        [1500, 65, 85, "Endurance"],
+        [2100, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "45 Minute Sweet Spot",
+      "duration": 2700,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 88, 85, "Sweet Spot"],
+        [1200, 88, 85, "Sweet Spot"],
+        [2100, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "50 Minute Mixed Intervals",
+      "duration": 3000,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 110, 85, "Interval"],
+        [600, 60, 80, "Recovery"],
+        [900, 110, 85, "Interval"],
+        [1200, 60, 80, "Recovery"],
+        [1500, 110, 85, "Interval"],
+        [1800, 60, 80, "Recovery"],
+        [2100, 110, 85, "Interval"],
+        [2400, 60, 80, "Recovery"],
+        [2700, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "50 Minute Pyramid",
+      "duration": 3000,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 80, 85, "Pyramid Up"],
+        [600, 90, 85, "Pyramid Up"],
+        [900, 100, 85, "Peak"],
+        [1200, 90, 85, "Pyramid Down"],
+        [1500, 80, 85, "Pyramid Down"],
+        [1800, 60, 80, "Recovery"],
+        [2100, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "55 Minute Long Endurance",
+      "duration": 3300,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 65, 85, "Endurance"],
+        [900, 70, 85, "Steady Endurance"],
+        [1500, 75, 85, "Steady Endurance"],
+        [2100, 70, 85, "Steady Endurance"],
+        [2700, 65, 85, "Endurance"],
+        [3000, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "55 Minute Fartlek",
+      "duration": 3300,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 95, 85, "Fartlek"],
+        [600, 60, 80, "Recovery"],
+        [900, 100, 85, "Fartlek"],
+        [1200, 60, 80, "Recovery"],
+        [1500, 105, 85, "Fartlek"],
+        [1800, 60, 80, "Recovery"],
+        [2100, 100, 85, "Fartlek"],
+        [2400, 60, 80, "Recovery"],
+        [2700, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "60 Minute Mixed Modal",
+      "duration": 3600,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 80, 85, "Endurance"],
+        [900, 100, 85, "Threshold"],
+        [1200, 60, 80, "Recovery"],
+        [1500, 100, 85, "Threshold"],
+        [1800, 60, 80, "Recovery"],
+        [2100, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "60 Minute High Intensity",
+      "duration": 3600,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 130, 85, "High Intensity"],
+        [600, 60, 80, "Recovery"],
+        [900, 130, 85, "High Intensity"],
+        [1200, 60, 80, "Recovery"],
+        [1500, 130, 85, "High Intensity"],
+        [1800, 60, 80, "Recovery"],
+        [2100, 130, 85, "High Intensity"],
+        [2400, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "65 Minute Progressive",
+      "duration": 3900,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 70, 85, "Progression"],
+        [900, 80, 85, "Progression"],
+        [1500, 90, 85, "Progression"],
+        [2100, 100, 85, "Progression"],
+        [2700, 90, 85, "Progression"],
+        [3300, 70, 85, "Recovery"],
+        [3600, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "65 Minute Variable Pace",
+      "duration": 3900,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 80, 85, "Effort"],
+        [600, 70, 85, "Recovery"],
+        [900, 85, 85, "Effort"],
+        [1200, 65, 85, "Recovery"],
+        [1500, 95, 85, "Effort"],
+        [1800, 70, 85, "Recovery"],
+        [2100, 85, 85, "Effort"],
+        [2400, 65, 85, "Recovery"],
+        [2700, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "70 Minute Long Ride",
+      "duration": 4200,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 70, 85, "Endurance"],
+        [1200, 80, 85, "Steady"],
+        [2400, 95, 85, "Tempo"],
+        [3000, 70, 85, "Endurance"],
+        [3600, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "30 Minute Recovery Ride",
+      "duration": 1800,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 55, 90, "Easy"],
+        [600, 50, 90, "Recovery"],
+        [900, 55, 90, "Easy"],
+        [1200, 50, 90, "Recovery"],
+        [1500, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "40 Minute High Cadence Drill",
+      "duration": 2400,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 80, 100, "High Cadence"],
+        [600, 50, 90, "Recovery"],
+        [900, 80, 100, "High Cadence"],
+        [1200, 50, 90, "Recovery"],
+        [1500, 80, 100, "High Cadence"],
+        [1800, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "55 Minute Climb Simulator",
+      "duration": 3300,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 100, 80, "Climb"],
+        [900, 60, 80, "Recovery"],
+        [1200, 110, 80, "Climb"],
+        [1500, 60, 80, "Recovery"],
+        [1800, 120, 80, "Climb"],
+        [2100, 60, 80, "Recovery"],
+        [2400, 100, 80, "Climb"],
+        [2700, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "35 Minute Sprint Challenge",
+      "duration": 2100,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [200, 125, 85, "Sprint"],
+        [300, 50, 80, "Recovery"],
+        [400, 125, 85, "Sprint"],
+        [500, 50, 80, "Recovery"],
+        [600, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "40 Minute Over/Under Combo",
+      "duration": 2400,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 95, 85, "Over"],
+        [600, 60, 80, "Under"],
+        [900, 95, 85, "Over"],
+        [1200, 60, 80, "Under"],
+        [1500, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "45 Minute Tempo & Recovery",
+      "duration": 2700,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 90, 85, "Tempo"],
+        [900, 90, 85, "Tempo"],
+        [1500, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "50 Minute Hill Repeats",
+      "duration": 3000,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 115, 85, "Hill"],
+        [600, 60, 80, "Recovery"],
+        [900, 115, 85, "Hill"],
+        [1200, 60, 80, "Recovery"],
+        [1500, 115, 85, "Hill"],
+        [1800, 60, 80, "Recovery"],
+        [2100, 115, 85, "Hill"],
+        [2400, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "55 Minute Sweet Spot Plus",
+      "duration": 3300,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 90, 85, "Sweet Spot"],
+        [900, 90, 85, "Sweet Spot"],
+        [1500, 95, 85, "Sweet Spot"],
+        [2100, 90, 85, "Sweet Spot"],
+        [2700, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "60 Minute Over/Under Repeats",
+      "duration": 3600,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 95, 85, "Over/Under"],
+        [600, 60, 80, "Under"],
+        [900, 95, 85, "Over/Under"],
+        [1200, 60, 80, "Under"],
+        [1500, 95, 85, "Over/Under"],
+        [1800, 60, 80, "Under"],
+        [2100, 95, 85, "Over/Under"],
+        [2400, 60, 80, "Under"],
+        [2700, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "65 Minute Varied Efforts",
+      "duration": 3900,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 80, 85, "Effort"],
+        [600, 70, 85, "Recovery"],
+        [900, 85, 85, "Effort"],
+        [1200, 65, 85, "Recovery"],
+        [1500, 95, 85, "Effort"],
+        [1800, 70, 85, "Recovery"],
+        [2100, 85, 85, "Effort"],
+        [2400, 65, 85, "Recovery"],
+        [2700, 50, 90, "Cooldown"]
+      ]
+    },
+    {
+      "name": "70 Minute Endurance Classic",
+      "duration": 4200,
+      "segments": [
+        [0, 50, 90, "Warmup"],
+        [300, 60, 85, "Endurance"],
+        [900, 65, 85, "Steady"],
+        [1500, 70, 85, "Steady"],
+        [2100, 75, 85, "Steady"],
+        [2700, 70, 85, "Steady"],
+        [3300, 65, 85, "Steady"],
+        [3900, 60, 85, "Endurance"],
+        [4200, 50, 90, "Cooldown"]
+      ]
+    }
+  ],
+  "timestamp": "2025-02-08T18:00:00"
+}

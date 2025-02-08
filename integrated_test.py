@@ -85,21 +85,21 @@ for client in [coach_client, rider_client, wb_client]:
     client.loop_start()
 
 # ----- Start each agent in its own thread -----
-coach_thread = threading.Thread(target=run_coach)
-rider_thread = threading.Thread(target=run_rider)
+#coach_thread = threading.Thread(target=run_coach)
+#rider_thread = threading.Thread(target=run_rider)
 wb_thread = threading.Thread(target=run_wireless_bridge)
 wb_thread.start()
 time.sleep(1)
-coach_thread.start()
+#coach_thread.start()
 time.sleep(1)
-rider_thread.start()
+#rider_thread.start()
 
 # Wait for all threads to complete.
 wb_thread.join()
 time.sleep(1)
-coach_thread.join()
+#coach_thread.join()
 time.sleep(1)
-rider_thread.join()
+#rider_thread.join()
 
 
 

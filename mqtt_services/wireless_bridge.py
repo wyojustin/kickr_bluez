@@ -133,17 +133,12 @@ class WirelessBridge:
             for trainer_id in self.trainer_ids:
                 measured_power = self._read_trainer_power(trainer_id)
                 measured_cadence = self._read_trainer_cadence(trainer_id)
-                percent_ftp = measured_power * self.ftps.get(trainer_id, 100)
+                percent_ftp = int(100 * measured_power / self.ftps.get(trainer_id, 100))
                 try:
                     # Use the pre-created SetMeasuredPower message object.
                     self.set_measured_power_msg.publish(
                         uuid_trainer=trainer_id,
                         measured_power=measured_power,
-                        percent_ftp=percent_ftp
-                    )
-                    self.set_measured_power_msg.publish(
-                        uuid_trainer=trainer_id,
-                        measured_cadence=measured_cadence,
                         percent_ftp=percent_ftp
                     )
                     self.logger.debug(f"Published measured power for {trainer_id}: {measured_power}")

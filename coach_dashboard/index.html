@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Coach Dashboard – Workout Plans</title>
+  <style>
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    .workout-card {
+      border: 1px solid #444;
+      padding: 10px;
+      margin: 10px;
+      background-color: #111;
+      cursor: pointer;
+      display: inline-block;
+      width: 300px;
+      vertical-align: top;
+    }
+    .workout-card h2 {
+      margin: 0 0 10px 0;
+      font-size: 20px;
+    }
+    .thumbnail {
+      width: 280px;
+      height: 150px;
+      background-color: #000;
+      display: block;
+      margin: 0 auto 10px;
+    }
+    .duration {
+      font-size: 16px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Coach Dashboard – Workout Plans</h1>
+  <div id="workoutList"></div>
+
+  <!-- MQTT and plan index script -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+  <script>
+    "use strict";
+    
+    // MQTT Broker Constants – update these as needed.
+    const MQTT_BROKER_HOST = "mqtt.eclipseprojects.io";
+    const MQTT_BROKER_PORT = 80;
+    const APP_ID = "UniqueAppID_for_training_sessions";
+    const clientId = "web_client_" + Math.floor(Math.random() * 100);
+    
+    // Create a MQTT client for sending the plan message.
+    const mqttClient = new Paho.MQTT.Client(MQTT_BROKER_HOST, MQTT_BROKER_PORT, "/mqtt", clientId);
+    
+    mqttClient.onConnectionLost = function(responseObject) {
+      console.log("MQTT Connection lost: " + responseObject.errorMessage);
+    };
+    
+    mqttClient.connect({
+      onSuccess: function() {
+        console.log("Connected to MQTT broker");
+        mqttClient.subscribe(APP_ID + "/#");
+      },
+      onFailure: function(message) {
+        console.log("MQTT Connection failed: " + message.errorMessage);
+      }
+    });
+    
+    // Helper functions for drawing thumbnails.
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return m.toString().padStart(2, '0') + ":" + s.toString().padStart(2, '0');
+    }
+    
+    function getZoneColor(percent) {
+      if (percent < 60) return "grey";
+      else if (percent <= 75) return "blue";
+      else if (percent <= 89) return "green";
+      else if (percent <= 104) return "yellow";
+      else if (percent <= 118) return "orange";
+      else return "red";
+    }
+    
+    function getMutedColor(zoneColor) {
+      const muted = {
+        "grey": "rgba(128,128,128,0.3)",
+        "blue": "rgba(0,0,255,0.3)",
+        "green": "rgba(0,128,0,0.3)",
+        "yellow": "rgba(255,255,0,0.3)",
+        "orange": "rgba(255,165,0,0.3)",
+        "red": "rgba(255,0,0,0.3)"
+      };
+      return muted[zoneColor] || zoneColor;
+    }
+    
+    // Load the workout plans from example_workout_plans.json.
+    fetch("example_workout_plans.json")
+      .then(response => response.json())
+      .then(data => {
+        const plans = data.workout_plans;
+        const workoutListDiv = document.getElementById("workoutList");
+        plans.forEach((plan, index) => {
+          const card = document.createElement("div");
+          card.className = "workout-card";
+          // When clicked, send a send_plan message and open workout.html.
+          card.addEventListener("click", function() {
+            // Send the plan details as a send_plan MQTT message.
+            const payload = JSON.stringify({
+              training_plan: plan.segments,
+              workout_name: plan.name,
+              duration: plan.duration,
+              time: new Date().toISOString()
+            });
+            const msg = new Paho.MQTT.Message(payload);
+            msg.destinationName = APP_ID + "/send_plan";
+            mqttClient.send(msg);
+            console.log("Sent send_plan message for plan index " + index);
+            // Open workout.html in a new tab with a query parameter.
+            window.open("workout.html?plan=" + index, "_blank");
+          });
+          
+          const title = document.createElement("h2");
+          title.textContent = plan.name;
+          card.appendChild(title);
+          
+          const canvasThumb = document.createElement("canvas");
+          canvasThumb.className = "thumbnail";
+          card.appendChild(canvasThumb);
+          
+          const durationP = document.createElement("p");
+          durationP.className = "duration";
+          const minutes = Math.floor(plan.duration / 60);
+          const seconds = plan.duration % 60;
+          durationP.textContent = "Duration: " + minutes + "m " + seconds + "s";
+          card.appendChild(durationP);
+          
+          workoutListDiv.appendChild(card);
+          
+          // Draw the thumbnail (a muted step-function graph).
+          drawWorkoutThumbnail(canvasThumb, plan);
+        });
+      })
+      .catch(error => {
+        console.error("Error loading workout plans:", error);
+      });
+    
+    function drawWorkoutThumbnail(canvas, plan) {
+      const ctx = canvas.getContext("2d");
+      const marginLeft = 10;
+      const marginRight = 10;
+      const marginTop = 10;
+      const marginBottom = 10;
+      const width = canvas.width;
+      const height = canvas.height;
+      const plotWidth = width - marginLeft - marginRight;
+      const plotHeight = height - marginTop - marginBottom;
+      const totalDuration = plan.duration;
+      const maxY = 150;
+      
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(marginLeft, height - marginBottom);
+      ctx.lineTo(width - marginRight, height - marginBottom);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(marginLeft, marginTop);
+      ctx.lineTo(marginLeft, height - marginBottom);
+      ctx.stroke();
+      
+      let stepPoints = [];
+      plan.segments.forEach((segment, i) => {
+        const startTime = segment[0];
+        let endTime = totalDuration;
+        if (i < plan.segments.length - 1) {
+          endTime = plan.segments[i+1][0];
+        }
+        const xStart = marginLeft + (startTime / totalDuration) * plotWidth;
+        const xEnd = marginLeft + (endTime / totalDuration) * plotWidth;
+        const y = marginTop + (1 - (segment[1] / maxY)) * plotHeight;
+        stepPoints.push({ x: xStart, y: y, t: startTime, p: segment[1] });
+        stepPoints.push({ x: xEnd, y: y, t: endTime, p: segment[1] });
+      });
+      
+      ctx.globalAlpha = 0.5;
+      stepPoints.forEach((pt, i) => {
+        // Fill entire segments with muted colors.
+        if (i % 2 === 0 && i+1 < stepPoints.length) {
+          const p1 = pt;
+          const p2 = stepPoints[i+1];
+          const fillColor = getMutedColor(getZoneColor(p1.p));
+          ctx.fillStyle = fillColor;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, height - marginBottom);
+          ctx.lineTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.lineTo(p2.x, height - marginBottom);
+          ctx.closePath();
+          ctx.fill();
+        }
+      });
+      ctx.globalAlpha = 1.0;
+      
+      ctx.strokeStyle = "#f80";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (stepPoints.length > 0) {
+        ctx.moveTo(stepPoints[0].x, stepPoints[0].y);
+        for (let i = 1; i < stepPoints.length; i++) {
+          ctx.lineTo(stepPoints[i].x, stepPoints[i].y);
+        }
+      }
+      ctx.stroke();
+    }
+  </script>
+</body>
+</html>

@@ -3,14 +3,17 @@ import threading
 import random  # For simulating power readings
 import json
 import logging
+import paho.mqtt.client as mqtt
 
 # Import the messaging functions from the mqtt_service sub-package.
-from mqtt_service.messaging import (
+from .messaging import (
     SetMeasuredPower,
+    SetMeasuredCadence,
     DeviceList,
+    SendFTP
 )
 # Import APP_ID from the constants module.
-from mqtt_service.constants import APP_ID
+from .constants import APP_ID
 
 class WirelessBridge:
     """
@@ -32,7 +35,6 @@ class WirelessBridge:
 
         # Initialize logger before calling _discover_trainers.
         self.logger = logging.getLogger(self.__class__.__name__)
-
         # Register command callbacks.
         self._register_command_callbacks()
 
@@ -44,7 +46,9 @@ class WirelessBridge:
 
         # Create messaging objects once in __init__
         self.set_measured_power_msg = SetMeasuredPower(self.client)
+        self.set_measured_cadence_msg = SetMeasuredCadence(self.client)
         self.device_list_msg = DeviceList(self.client)
+        self.reply_ftp_msg = SendFTP(self.client)
 
         self._running = False
         self._thread = None
@@ -64,6 +68,14 @@ class WirelessBridge:
             - set_target_power
         The topics use the hierarchical naming convention: <APP_ID>/<command_topic>.
         """
+
+        subscribe_topic = f"{APP_ID}/#"
+        result, mid = self.client.subscribe(subscribe_topic)
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            self.logger.error(f"Failed to subscribe to topic {subscribe_topic}: {mqtt.error_string(result)}")
+        else:
+            self.logger.info(f"Subscribed to topic {subscribe_topic}")
+
         topic_list_devices = f"{APP_ID}/list_devices"
         self.client.message_callback_add(topic_list_devices, self._handle_list_devices)
 
@@ -75,7 +87,7 @@ class WirelessBridge:
 
         topic_set_target_power = f"{APP_ID}/set_target_power"
         self.client.message_callback_add(topic_set_target_power, self._handle_set_target_power)
-
+        self.client.loop_start()
         self.logger.info("Registered command callbacks for list_devices, pair_device, set_ftp, and set_target_power.")
 
     def _discover_trainers(self):
@@ -120,11 +132,19 @@ class WirelessBridge:
         while self._running:
             for trainer_id in self.trainer_ids:
                 measured_power = self._read_trainer_power(trainer_id)
+                measured_cadence = self._read_trainer_cadence(trainer_id)
+                percent_ftp = measured_power * self.ftps.get(trainer_id, 100)
                 try:
                     # Use the pre-created SetMeasuredPower message object.
                     self.set_measured_power_msg.publish(
                         uuid_trainer=trainer_id,
-                        measured_power=measured_power
+                        measured_power=measured_power,
+                        percent_ftp=percent_ftp
+                    )
+                    self.set_measured_power_msg.publish(
+                        uuid_trainer=trainer_id,
+                        measured_cadence=measured_cadence,
+                        percent_ftp=percent_ftp
                     )
                     self.logger.debug(f"Published measured power for {trainer_id}: {measured_power}")
                 except Exception as e:
@@ -143,7 +163,21 @@ class WirelessBridge:
             int: The simulated measured power.
         """
         # Simulate a measured power reading as a random integer between 100 and 400 watts.
-        return random.randint(100, 400)
+        return random.randint(90, 110)
+
+    def _read_trainer_cadence(self, trainer_id):
+        """
+        Placeholder for the Bluetooth/ANT+ function that reads the trainer's output cadence.
+        This function should be replaced with the actual implementation to query the trainer.
+
+        Parameters:
+            trainer_id (str): The unique identifier of the trainer.
+
+        Returns:
+            int: The simulated measured cadence.
+        """
+        # Simulate a measured cadence reading as a random integer between 85 and 95 RPM.
+        return random.randint(80, 95)
 
     # ---------------------------
     # MQTT Command Handler Methods
@@ -192,6 +226,22 @@ class WirelessBridge:
         except Exception as e:
             self.logger.error(f"Error handling set_ftp command: {e}")
 
+    def _handle_request_ftp(self, client, userdata, msg):
+        """
+        Responds to a request_ftp command.
+        Expects a payload containing 'uuid_trainer'.
+        """
+        self.logger.info("Received request_ftp command")
+        try:
+            data = json.loads(msg.payload.decode())
+            uuid_trainer = data.get("uuid_trainer")
+            self.logger.info(f"Got an FTP request for trainer {uuid_trainer}")
+            # send the FTP value.
+            ftp = self.ftps.get(uuid_trainer, 100)
+            self.send_ftp(ftp)
+        except Exception as e:
+            self.logger.error(f"Error handling set_ftp command: {e}")
+
     def _handle_set_target_power(self, client, userdata, msg):
         """
         Responds to a set_target_power command.
@@ -200,19 +250,19 @@ class WirelessBridge:
         self.logger.info("Received set_target_power command")
         try:
             data = json.loads(msg.payload.decode())
-            uuid_trainer = data.get("uuid_trainer")
             target_power = data.get("target_power")
             if uuid_trainer is None or target_power is None:
                 self.logger.error("set_target_power payload missing required fields.")
                 return
 
-            self.logger.info(f"Setting target power for trainer {uuid_trainer} to {target_power}%")
-            # Use the stored FTP value if available; default to 100 if not.
-            ftp = self.ftps.get(uuid_trainer, 100)
-            # Compute the target watts: interpret target_power as a percent.
-            watts = ftp * target_power / 100
+            self.logger.info(f"Setting target power to {target_power}%")
+            if False:
+                for uuid_trainer in self.ftps:
+                    ftp = self.ftps[uuid_trainer]
+                    # Compute the target watts: interpret target_power as a percent.
+                    watts = ftp * target_power / 100
             # Call our helper method to process the target power command.
-            self._set_target_power(uuid_trainer, watts)
+            self._set_target_power(uuid_trainer, target_power)
         except Exception as e:
             self.logger.error(f"Error handling set_target_power command: {e}")
 
@@ -224,71 +274,3 @@ class WirelessBridge:
         self.logger.info(f"Setting target power for trainer {uuid_trainer} to {watts} watts")
         # You could add code here to perform further actions if required.
 
-# ---------------------------
-# Example usage:
-# ---------------------------
-if __name__ == "__main__":
-    import paho.mqtt.client as mqtt
-    # Import constants from the mqtt_service package.
-    from mqtt_service.constants import hostname, APP_ID
-
-    # Set up basic logging.
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    logging.info(f"hostname: {hostname}, APP_ID: {APP_ID}")
-
-    # Create an MQTT client (using Callback API version 2 to avoid deprecation warnings).
-    client = mqtt.Client(
-        client_id="",
-        protocol=mqtt.MQTTv311,
-        callback_api_version=mqtt.CallbackAPIVersion.VERSION2
-    )
-
-    # Global fallback callback for topics without a specific registered callback.
-    def on_message(client, userdata, msg):
-        logging.info(f"Global on_message: Received message on topic {msg.topic}: {msg.payload.decode()}")
-
-    client.on_message = on_message
-
-    # Connect to the MQTT broker.
-    client.connect(hostname)
-    # Subscribe to all topics under the APP_ID.
-    subscribe_topic = f"{APP_ID}/#"
-    client.subscribe(subscribe_topic)
-    client.loop_start()
-
-    # Create and start the WirelessBridge.
-    bridge = WirelessBridge(client)
-    bridge.start()
-
-    # Give the bridge some time to start polling.
-    time.sleep(2)
-
-    # --- Publish test commands to trigger the callbacks ---
-    # Test list_devices command.
-    client.publish(f"{APP_ID}/list_devices", "{}")
-    time.sleep(1)
-
-    # Test pair_device command.
-    pair_payload = json.dumps({"uuid_trainer": "trainer_123", "uuid_rider": "rider_456"})
-    client.publish(f"{APP_ID}/pair_device", pair_payload)
-    time.sleep(1)
-
-    # Test set_ftp command.
-    ftp_payload = json.dumps({"uuid_trainer": "trainer_789", "ftp": 300})
-    client.publish(f"{APP_ID}/set_ftp", ftp_payload)
-    time.sleep(1)
-
-    # Test set_target_power command with target_power as a percent.
-    target_power_payload = json.dumps({"uuid_trainer": "trainer_123", "target_power": 90})
-    client.publish(f"{APP_ID}/set_target_power", target_power_payload)
-    time.sleep(2)
-
-    try:
-        # Let the bridge continue running for a few more seconds to observe polling.
-        time.sleep(5)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        bridge.stop()
-        client.loop_stop()
-        client.disconnect()

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Team Dashboard – Training Plan</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+      font-family: Arial, sans-serif;
+      font-size: 16px;
+    }
+    /* The canvas fills the screen */
+    #projectorCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+  </style>
+  <!-- Include the Paho MQTT client using your provided script tag -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+</head>
+<body>
+  <canvas id="projectorCanvas"></canvas>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      "use strict";
+      
+      /***********************
+       * Helper Functions
+       ***********************/
+      function formatTime(seconds) {
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return m.toString().padStart(2, '0') + ":" + s.toString().padStart(2, '0');
+      }
+      
+      // Returns a vivid color based on the target power percent.
+      function getZoneColor(percent) {
+        if (percent < 60) return "grey";
+        else if (percent <= 75) return "blue";
+        else if (percent <= 89) return "green";
+        else if (percent <= 104) return "yellow";
+        else if (percent <= 118) return "orange";
+        else return "red";
+      }
+      
+      // Returns a muted version (with transparency) of the given zone color.
+      function getMutedColor(zoneColor) {
+        const muted = {
+          "grey": "rgba(128,128,128,0.3)",
+          "blue": "rgba(0,0,255,0.3)",
+          "green": "rgba(0,128,0,0.3)",
+          "yellow": "rgba(255,255,0,0.3)",
+          "orange": "rgba(255,165,0,0.3)",
+          "red": "rgba(255,0,0,0.3)"
+        };
+        return muted[zoneColor] || zoneColor;
+      }
+      
+      /***********************
+       * Training Plan & Global Variables
+       ***********************/
+      // Default training plan: each stage is [startTime (s), target_power (%), target_cadence, description]
+      let trainingPlan = [
+        [0,    50, 90, "Warmup"],
+        [120,  100, 80, "Interval"],
+        [180,  50, 80, "Rest"],
+        [240,  100, 80, "Interval"],
+        [300,  50, 80, "Rest"],
+        [360,  100, 80, "Interval"],
+        [420,  50, 80, "Rest"],
+        [600,  50, 85, "Cooldown"],
+        [720,  0,  85, "Stop"]
+      ];
+      
+      // Plan control.
+      let planStarted = false;
+      let planStartTime = 0; // Set when a "start_plan" message is received.
+      
+      // Measured power history for each rider.
+      // measuredPowerHistory: { uuid: [ { t, percent }, ... ] }
+      let measuredPowerHistory = {};
+      // Map rider uuid to current FTP; default is 100.
+      let riderFtpMap = {};
+      // Map rider uuid to a unique color.
+      let riderColors = {};
+      const colorPalette = ["#0ff", "#f0f", "#ff0", "#0f0", "#00f", "#f00", "#ffa500", "#800080", "#008080", "#ff69b4", "#a52a2a", "#5f9ea0", "#d2691e", "#ff1493", "#7fff00", "#ffd700", "#dc143c", "#00ced1", "#9932cc", "#ff7f50"];
+      let nextColorIndex = 0;
+      function assignColorToRider(uuid) {
+        if (!riderColors[uuid]) {
+          riderColors[uuid] = colorPalette[nextColorIndex % colorPalette.length];
+          nextColorIndex++;
+        }
+        return riderColors[uuid];
+      }
+      
+      // Compute total duration of the plan.
+      function getTotalDuration() {
+        return trainingPlan.length ? trainingPlan[trainingPlan.length - 1][0] : 0;
+      }
+      
+      // Given elapsed seconds, return the current stage.
+      function getCurrentStage(elapsed) {
+        if (trainingPlan.length === 0) return null;
+        for (let i = 0; i < trainingPlan.length - 1; i++) {
+          if (elapsed >= trainingPlan[i][0] && elapsed < trainingPlan[i+1][0]) {
+            return { index: i, stage: trainingPlan[i] };
+          }
+        }
+        return { index: trainingPlan.length - 1, stage: trainingPlan[trainingPlan.length - 1] };
+      }
+      
+      /***********************
+       * Dashboard (Team) Module
+       ***********************/
+      const canvas = document.getElementById("projectorCanvas");
+      const ctx = canvas.getContext("2d");
+      
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      
+      // Draw the team dashboard.
+      function drawDashboard() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (!planStarted) {
+          ctx.fillStyle = "#fff";
+          ctx.font = "48px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText("Waiting for plan start...", canvas.width / 2, canvas.height / 2);
+          drawPlanTimeline(true);
+          return;
+        }
+        
+        const now = Date.now();
+        const elapsed = (now - planStartTime) / 1000;
+        const totalDuration = getTotalDuration();
+        
+        const currentStageInfo = getCurrentStage(elapsed);
+        let stageEndTime = totalDuration;
+        if (currentStageInfo && currentStageInfo.index < trainingPlan.length - 1) {
+          stageEndTime = trainingPlan[currentStageInfo.index + 1][0];
+        }
+        const stageRemaining = Math.max(stageEndTime - elapsed, 0);
+        
+        // Draw the target power graph.
+        drawPlanTimeline(false, elapsed);
+        // Overlay measured power curves.
+        drawMeasuredPowerHistory();
+        
+        // Draw elapsed time and time-to-go BELOW the graph.
+        ctx.fillStyle = "#fff";
+        ctx.font = "32px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("Elapsed: " + formatTime(elapsed) + "   |   Time to go: " + formatTime(stageRemaining), canvas.width / 2, canvas.height - 40);
+      }
+      
+      // Draw the target power graph as a step function.
+      function drawPlanTimeline(grayedOut, elapsed) {
+        const marginLeft = 50;
+        const marginRight = 50;
+        const marginTop = 100;
+        const marginBottom = 80;  // Reduced so the graph is just above the time text.
+        const plotWidth = canvas.width - marginLeft - marginRight;
+        const plotHeight = canvas.height - marginTop - marginBottom;
+        const totalDuration = getTotalDuration();
+        const maxY = 150;
+        
+        // Draw axes.
+        ctx.strokeStyle = "#555";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(marginLeft, canvas.height - marginBottom);
+        ctx.lineTo(canvas.width - marginRight, canvas.height - marginBottom);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(marginLeft, marginTop);
+        ctx.lineTo(marginLeft, canvas.height - marginBottom);
+        ctx.stroke();
+        
+        // Draw total time at the end of the x-axis.
+        ctx.fillStyle = "#fff";
+        ctx.font = "16px Arial";
+        ctx.textAlign = "right";
+        ctx.fillText("Total: " + formatTime(totalDuration), canvas.width - marginRight, canvas.height - marginBottom + 20);
+        
+        // Build step function points.
+        let stepPoints = [];
+        for (let i = 0; i < trainingPlan.length; i++) {
+          const stage = trainingPlan[i];
+          const startTime = stage[0];
+          let endTime = totalDuration;
+          if (i < trainingPlan.length - 1) {
+            endTime = trainingPlan[i+1][0];
+          }
+          const xStart = marginLeft + (startTime / totalDuration) * plotWidth;
+          const xEnd = marginLeft + (endTime / totalDuration) * plotWidth;
+          const y = marginTop + (1 - (stage[1] / maxY)) * plotHeight;
+          stepPoints.push({ x: xStart, y: y, t: startTime, p: stage[1] });
+          stepPoints.push({ x: xEnd, y: y, t: endTime, p: stage[1] });
+        }
+        
+        const currentX = marginLeft + (Math.min(elapsed, totalDuration) / totalDuration) * plotWidth;
+        
+        // Fill each segment with vivid color for past and muted for future.
+        ctx.globalAlpha = 0.5;
+        for (let i = 0; i < stepPoints.length - 1; i += 2) {
+          const p1 = stepPoints[i];
+          const p2 = stepPoints[i+1];
+          const vividColor = getZoneColor(p1.p);
+          const mutedColor = getMutedColor(vividColor);
+          
+          if (currentX <= p1.x) {
+            ctx.fillStyle = mutedColor;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, canvas.height - marginBottom);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p2.x, canvas.height - marginBottom);
+            ctx.closePath();
+            ctx.fill();
+          } else if (currentX >= p2.x) {
+            ctx.fillStyle = vividColor;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, canvas.height - marginBottom);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p2.x, canvas.height - marginBottom);
+            ctx.closePath();
+            ctx.fill();
+          } else {
+            // Partially complete segment.
+            ctx.fillStyle = vividColor;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, canvas.height - marginBottom);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.lineTo(currentX, p1.y);
+            ctx.lineTo(currentX, canvas.height - marginBottom);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.fillStyle = mutedColor;
+            ctx.beginPath();
+            ctx.moveTo(currentX, canvas.height - marginBottom);
+            ctx.lineTo(currentX, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p2.x, canvas.height - marginBottom);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1.0;
+        
+        // Draw the step function line.
+        ctx.strokeStyle = "#f80";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        if (stepPoints.length > 0) {
+          ctx.moveTo(stepPoints[0].x, stepPoints[0].y);
+          for (let i = 1; i < stepPoints.length; i++) {
+            ctx.lineTo(stepPoints[i].x, stepPoints[i].y);
+          }
+        }
+        ctx.stroke();
+        
+        // Draw a vertical line for current time.
+        if (planStarted) {
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(currentX, marginTop);
+          ctx.lineTo(currentX, canvas.height - marginBottom);
+          ctx.stroke();
+        }
+      }
+      
+      // Draw measured power history curves for all riders.
+      function drawMeasuredPowerHistory() {
+        const marginLeft = 50;
+        const marginRight = 50;
+        const marginTop = 100;
+        const marginBottom = 80; // Use same bottom margin as target graph.
+        const plotWidth = canvas.width - marginLeft - marginRight;
+        const plotHeight = canvas.height - marginTop - marginBottom;
+        const totalDuration = getTotalDuration();
+        const maxY = 150;
+        
+        for (let uuid in measuredPowerHistory) {
+          const history = measuredPowerHistory[uuid];
+          if (!history || history.length === 0) continue;
+          const color = assignColorToRider(uuid);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          history.forEach((point, index) => {
+            const x = marginLeft + (point.t / totalDuration) * plotWidth;
+            const y = marginTop + (1 - (point.percent / maxY)) * plotHeight;
+            if (index === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          });
+          ctx.stroke();
+        }
+      }
+      
+      function animate() {
+        drawDashboard();
+        requestAnimationFrame(animate);
+      }
+      
+      animate();
+      
+      /***********************
+       * MQTT Integration
+       ***********************/
+      const APP_ID = "UniqueAppID_for_training_sessions";
+      const clientId = "web_client_" + Math.floor(Math.random() * 100);
+      
+      const mqttClient = new Paho.MQTT.Client("mqtt.eclipseprojects.io", 80, "/mqtt", clientId);
+      
+      mqttClient.onConnectionLost = function(responseObject) {
+        console.log("Connection lost: " + responseObject.errorMessage);
+      };
+      
+      mqttClient.onMessageArrived = function(message) {
+        if (!message.payloadString || message.payloadString.trim() === "") {
+          console.log("Empty MQTT payload, skipping parsing.");
+          return;
+        }
+        console.log("MQTT message arrived on topic " + message.destinationName + ": " + message.payloadString);
+        try {
+          const data = JSON.parse(message.payloadString);
+          const topic = message.destinationName;
+          if (topic.endsWith("send_plan")) {
+            if (data.training_plan && Array.isArray(data.training_plan)) {
+              trainingPlan = data.training_plan.map(stageArr => [
+                stageArr[0],
+                stageArr[1],
+                stageArr[2],
+                stageArr[3]
+              ]);
+              console.log("Training plan updated via send_plan message.");
+            }
+          } else if (topic.endsWith("start_plan")) {
+            planStarted = true;
+            planStartTime = Date.now();
+            measuredPowerHistory = {};
+            riderFtpMap = {};
+            console.log("Training plan started.");
+          }
+          // Monitor measured power messages.
+          else if (topic.endsWith("set_measured_power")) {
+            if (data.measured_power !== undefined && data.uuid_trainer) {
+              const uuid = data.uuid_trainer;
+              if (!measuredPowerHistory[uuid]) {
+                measuredPowerHistory[uuid] = [];
+              }
+              if (!riderFtpMap[uuid]) {
+                riderFtpMap[uuid] = 100; // default FTP
+              }
+              const percent = (data.measured_power / riderFtpMap[uuid]) * 100;
+              const currentElapsed = (Date.now() - planStartTime) / 1000;
+              measuredPowerHistory[uuid].push({ t: currentElapsed, percent: percent });
+            }
+          }
+          // Monitor FTP messages.
+          else if (topic.endsWith("set_ftp")) {
+            if (data.ftp !== undefined && data.uuid_trainer) {
+              const uuid = data.uuid_trainer;
+              riderFtpMap[uuid] = data.ftp;
+              console.log("FTP for rider " + uuid + " updated to " + data.ftp);
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing MQTT JSON:", err);
+        }
+      };
+      
+      mqttClient.connect({
+        onSuccess: function() {
+          console.log("Connected to MQTT broker");
+          mqttClient.subscribe(APP_ID + "/#");
+          const listDevicesMsg = new Paho.MQTT.Message("");
+          listDevicesMsg.destinationName = APP_ID + "/list_devices";
+          mqttClient.send(listDevicesMsg);
+          // After connecting, send a get_plan message.
+          setTimeout(() => {
+            const getPlanPayload = JSON.stringify({ time: new Date().toISOString() });
+            const getPlanMsg = new Paho.MQTT.Message(getPlanPayload);
+            getPlanMsg.destinationName = APP_ID + "/get_plan";
+            mqttClient.send(getPlanMsg);
+            console.log("Sent get_plan message");
+          }, 1000);
+        },
+        onFailure: function(message) {
+          console.log("MQTT Connection failed: " + message.errorMessage);
+        }
+      });
+      
+    });
+  </script>
+</body>
+</html>

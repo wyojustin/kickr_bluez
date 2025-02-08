@@ -1,4 +1,6 @@
 '''
+Begin messaging.py
+
 Create messaging service for controlling a power based cycle trainer
 '''
 import time
@@ -54,6 +56,12 @@ class MQTT_MessageType:
             logging.info(f"Published message to {self.topic}: {payload}")
 
 # Message type definitions now require the client instance.
+def RequestFTP(client):
+    return MQTT_MessageType(client, 'uuid_trainer')
+
+def SendFTP(client):
+    return MQTT_MessageType(client, 'uuid_trainer', 'ftp')
+
 def ListDevices(client):
     return MQTT_MessageType(client, 'list_devices')
 
@@ -70,7 +78,7 @@ def GetPlan(client):
     return MQTT_MessageType(client, 'get_plan')
 
 def SendPlan(client):
-    return MQTT_MessageType(client, 'list_plan', arg_names='training_plan')
+    return MQTT_MessageType(client, 'send_plan', arg_names='training_plan')
 
 def SetFTP(client):
     return MQTT_MessageType(client, 'set_ftp', arg_names=('uuid_trainer', 'ftp'))
@@ -85,7 +93,13 @@ def SetTargetPower(client):
     return MQTT_MessageType(client, 'set_target_power', arg_names=('target_power'))
     
 def SetMeasuredPower(client):
-    return MQTT_MessageType(client, 'set_measured_power', arg_names=('uuid_trainer', 'measured_power'))
+    return MQTT_MessageType(client, 'set_measured_power', arg_names=('uuid_trainer', 'measured_power', 'percent_ftp'))
+
+def SetTargetCadence(client):
+    return MQTT_MessageType(client, 'set_target_cadence', arg_names=('target_cadence'))
+    
+def SetMeasuredCadence(client):
+    return MQTT_MessageType(client, 'set_measured_cadence', arg_names=('uuid_trainer', 'measured_cadence'))
 
 # Callback function for received messages.
 def on_message(client, userdata, msg):

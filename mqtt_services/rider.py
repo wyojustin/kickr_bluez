@@ -21,12 +21,11 @@ It handles the following incoming MQTT messages:
 import time
 import json
 import logging
-import threading
 
 import paho.mqtt.client as mqtt
 
 # Import the messaging factory functions from the mqtt_service sub-package.
-from mqtt_service.messaging import (
+from .messaging import (
     ListDevices,
     PairDevice,
     GetPlan,
@@ -39,7 +38,7 @@ from mqtt_service.messaging import (
     SetTargetPower,
     SetMeasuredPower,
 )
-from mqtt_service.constants import APP_ID, hostname
+from .constants import APP_ID, hostname
 
 # Configure logging.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -76,6 +75,13 @@ class Rider:
             - set_target_power: Broadcast target power from the coach.
             - measured_power: Measured power reports from a trainer.
         """
+        subscribe_topic = f"{APP_ID}/#"
+        result, mid = self.client.subscribe(subscribe_topic)
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            logger.error(f"Failed to subscribe to topic {subscribe_topic}: {mqtt.error_string(result)}")
+        else:
+            logger.info(f"Subscribed to topic {subscribe_topic}")
+        
         topics = {
             "device_list": self._handle_device_list,
             "send_plan": self._handle_send_plan,
@@ -89,6 +95,7 @@ class Rider:
             topic = f"{APP_ID}/{topic_suffix}"
             self.client.message_callback_add(topic, callback)
             self.logger.info(f"Rider registered callback for topic: {topic}")
+        self.client.loop_start()
 
     # ----- Methods to generate outgoing messages -----
     def request_device_list(self):
@@ -137,10 +144,10 @@ class Rider:
         """Handles an incoming SendPlan message containing the training plan."""
         try:
             payload = json.loads(msg.payload.decode())
-            plan = payload.get("training_plan", [])
-            self.logger.info(f"Rider received training plan: {plan}")
+            self.plan = payload.get("training_plan", [])
+            self.logger.info(f"Rider received training plan: {self.plan}")
         except Exception as e:
-            self.logger.error(f"Error processing training plan: {e}")
+            self.logger.error(f"Error processing training plan: {e}\n    msg:{msg}\n    userdata:{userdata}")
 
     def _handle_start_plan(self, client, userdata, msg):
         """Handles an incoming StartPlan message indicating the training plan has started."""
@@ -170,49 +177,3 @@ class Rider:
             self.logger.error(f"Error processing measured power message: {e}")
 
 
-# ----- Main method for testing Rider functionality -----
-if __name__ == "__main__":
-    # Create an MQTT client (using Callback API version 2 to avoid deprecation warnings).
-    client = mqtt.Client(
-        client_id="",
-        protocol=mqtt.MQTTv311,
-        callback_api_version=mqtt.CallbackAPIVersion.VERSION2
-    )
-
-    # Global fallback callback for topics without a specific registered callback.
-    def on_message(client, userdata, msg):
-        logger.info(f"Global on_message: Topic {msg.topic} -> {msg.payload.decode()}")
-
-    client.on_message = on_message
-
-    # Connect to the MQTT broker.
-    client.connect(hostname)
-    # Subscribe to all topics under APP_ID.
-    subscribe_topic = f"{APP_ID}/#"
-    client.subscribe(subscribe_topic)
-    client.loop_start()
-
-    # Create an instance of Rider.
-    rider = Rider(client)
-
-    # For testing, wait a few seconds to allow subscriptions to take effect.
-    time.sleep(2)
-
-    # --- Generate outgoing messages ---
-    rider.request_device_list()
-    time.sleep(1)
-
-    rider.pair_device("trainer_123", "rider_999")
-    time.sleep(1)
-
-    rider.set_ftp("trainer_123", 250)
-    time.sleep(1)
-
-    rider.request_training_plan()
-    time.sleep(1)
-
-    # Let the Rider run for a while to process any incoming messages.
-    time.sleep(10)
-
-    client.loop_stop()
-    client.disconnect()

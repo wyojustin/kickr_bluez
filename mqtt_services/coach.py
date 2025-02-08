@@ -10,12 +10,14 @@ It generates the following messages:
     - SetFTP
     - StartPlan
     - SetTargetPower
+    - SetTargetCadence
     - StopPlan
 
 It also handles the following incoming messages:
     - DeviceList
     - GetPlan
     - MeasuredPower
+    - MeasuredCadence
 
 The training plan consists of a list of tuples, where each tuple has four elements:
     (start_time_offset, target_power, target_cadence, description)
@@ -39,19 +41,19 @@ import threading
 import paho.mqtt.client as mqtt
 
 # Import the messaging factory functions from the mqtt_service sub-package.
-from mqtt_service.messaging import (
+from .messaging import (
     ListDevices,
     PairDevice,
     SendPlan,
     SetFTP,
     StartPlan,
     SetTargetPower,
+    SetTargetCadence,
     StopPlan,
     DeviceList,
     GetPlan,
-    SetMeasuredPower,
 )
-from mqtt_service.constants import APP_ID, hostname
+from .constants import APP_ID, hostname
 
 # Configure logging.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -80,6 +82,7 @@ class Coach:
         self.start_plan_msg = StartPlan(self.client)
         # New broadcast-style SetTargetPower message (only requires target_power).
         self.set_target_power_msg = SetTargetPower(self.client)
+        self.set_target_cadence_msg = SetTargetCadence(self.client)
         self.stop_plan_msg = StopPlan(self.client)
 
         # Register callbacks for incoming messages.
@@ -114,6 +117,14 @@ class Coach:
             - GetPlan: a request for a training plan.
             - MeasuredPower: messages reporting measured power from trainers.
         """
+        subscribe_topic = f"{APP_ID}/#"
+        result, mid = self.client.subscribe(subscribe_topic)
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            logger.error(f"Failed to subscribe to topic {subscribe_topic}: {mqtt.error_string(result)}")
+        else:
+            logger.info(f"Subscribed to topic {subscribe_topic}")
+        
+
         topic_device_list = f"{APP_ID}/device_list"
         self.client.message_callback_add(topic_device_list, self._handle_device_list)
 
@@ -121,10 +132,14 @@ class Coach:
         self.client.message_callback_add(topic_get_plan, self._handle_get_plan)
 
         topic_measured_power = f"{APP_ID}/set_measured_power"
+        topic_measured_cadence = f"{APP_ID}/set_measured_cadence"
         self.client.message_callback_add(topic_measured_power, self._handle_measured_power)
-
-        self.logger.info("Coach registered response callbacks for device_list, get_plan, and measured_power.")
-
+        self.client.message_callback_add(topic_measured_cadence, self._handle_measured_cadence)
+        self.client.loop_start()
+        self.logger.info(
+            "Coach registered response callbacks for device_list, get_plan, measured_power and measured_cadence."
+        )
+        
     # ----- Methods to generate outgoing messages -----
     def request_device_list(self):
         """Generates a ListDevices message to request the list of devices."""
@@ -139,7 +154,7 @@ class Coach:
         self.logger.info(f"Coach: Pairing trainer {uuid_trainer} with rider {uuid_rider}.")
         self.pair_device_msg.publish(uuid_trainer=uuid_trainer, uuid_rider=uuid_rider)
         self.pairings[uuid_trainer] = uuid_rider
-
+        
     def send_training_plan(self, training_plan):
         """
         Generates a SendPlan message with the provided training plan.
@@ -198,6 +213,7 @@ class Coach:
 
             self.logger.info(f"Coach: Segment '{description}': Broadcasting target power {target_power}%.")
             self.set_target_power(target_power)
+            self.set_target_cadence(target_cadence)
             previous_offset = offset
 
         self.logger.info("Coach: Training plan complete. Sending stop plan command.")
@@ -210,6 +226,14 @@ class Coach:
         """
         self.logger.info(f"Coach: Broadcasting target power: {target_power_percent}%.")
         self.set_target_power_msg.publish(target_power=target_power_percent)
+
+    def set_target_cadence(self, target_cadence):
+        """
+        Generates a SetTargetCadence message (broadcast to all paired devices).
+        target_cadence_percent is interpreted as a percentage.
+        """
+        self.logger.info(f"Coach: Broadcasting target cadence: {target_cadence}.")
+        self.set_target_cadence_msg.publish(target_cadence=target_cadence)
 
     def stop_plan(self):
         """
@@ -254,54 +278,17 @@ class Coach:
         except Exception as e:
             self.logger.error(f"Error processing measured power message: {e}")
 
+    def _handle_measured_cadence(self, client, userdata, msg):
+        """
+        Handles a MeasuredPower message (e.g., from a trainer).
+        Logs the measured power for a given trainer.
+        """
+        try:
+            payload = json.loads(msg.payload.decode())
+            uuid_trainer = payload.get("uuid_trainer")
+            measured_cadence = payload.get("measured_cadence")
+            self.logger.info(f"Coach received measured power from trainer {uuid_trainer}: {measured_cadence} RPM")
+        except Exception as e:
+            self.logger.error(f"Error processing measured cadence message: {e}")
 
-# ----- Main method for testing Coach functionality -----
-if __name__ == "__main__":
-    # Create an MQTT client (using Callback API version 2 to avoid deprecation warnings).
-    client = mqtt.Client(
-        client_id="",
-        protocol=mqtt.MQTTv311,
-        callback_api_version=mqtt.CallbackAPIVersion.VERSION2
-    )
 
-    # Global fallback callback for topics without a specific registered callback.
-    def on_message(client, userdata, msg):
-        logger.info(f"Global on_message: Topic {msg.topic} -> {msg.payload.decode()}")
-
-    client.on_message = on_message
-
-    # Connect to the MQTT broker.
-    client.connect(hostname)
-    # Subscribe to all topics under the APP_ID.
-    subscribe_topic = f"{APP_ID}/#"
-    client.subscribe(subscribe_topic)
-    client.loop_start()
-
-    # Create an instance of Coach with the default training plan.
-    coach = Coach(client)
-
-    # For testing, use sequential calls.
-    time.sleep(2)  # Give some time for the subscriptions to take effect.
-
-    # --- Generate outgoing messages ---
-    coach.request_device_list()
-    time.sleep(1)
-
-    coach.pair_device("trainer_123", "rider_456")
-    time.sleep(1)
-
-    coach.set_ftp("trainer_789", 300)
-    time.sleep(1)
-
-    # Start the training plan (broadcast to all paired devices).
-    coach.start_plan()
-
-    # Let the plan run for 10 seconds and then interrupt it.
-    time.sleep(10)
-    coach.stop_plan()
-
-    # Allow some time for the plan interruption to process.
-    time.sleep(3)
-
-    client.loop_stop()
-    client.disconnect()

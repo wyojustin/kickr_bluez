@@ -2,528 +2,103 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Coach Dashboard – Workout Details</title>
+  <title>Coach Dashboard – Workout</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      background: #000;
-      color: #fff;
-      overflow: hidden;
       height: 100%;
-      width: 100%;
-      font-family: Arial, sans-serif;
-      font-size: 16px;
-    }
-    #details {
-      text-align: center;
-      padding: 10px;
-    }
-    #startButton {
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: #0a0;
-      color: #fff;
-      border: none;
-      cursor: pointer;
-      margin-top: 10px;
-    }
-    /* The canvas fills most of the screen */
-    #workoutCanvas {
-      display: block;
-      width: 100vw;
-      height: 80vh;
+      overflow: hidden;
       background: #000;
+      font-family: Arial, sans-serif;
+      color: #fff;
+    }
+    /* Top pane: contains the start button */
+    #topPane {
+      height: 20%;       /* Adjust as needed */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid #444;
+    }
+    /* Bottom pane: embeds the team dashboard */
+    #bottomPane {
+      height: 80%;       /* Adjust as needed */
+    }
+    /* Style for the Start Workout button */
+    #startButton {
+      padding: 20px 40px;
+      font-size: 24px;
+      background-color: #008000;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      color: #fff;
+    }
+    /* Ensure the iframe fills the bottom pane */
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
     }
   </style>
-  <!-- Include the Paho MQTT client -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+  <!-- Include the Paho MQTT client library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 </head>
 <body>
-  <div id="details">
-    <h1 id="workoutName"></h1>
-    <p id="workoutDuration"></p>
+  <!-- Top Pane: Start Workout Button -->
+  <div id="topPane">
     <button id="startButton">Start Workout</button>
   </div>
-  <canvas id="workoutCanvas"></canvas>
+  
+  <!-- Bottom Pane: Embed the team dashboard -->
+  <div id="bottomPane">
+    <iframe src="/team_dashboard/team_dashboard.html"></iframe>
+  </div>
+  
   <script>
-    document.addEventListener("DOMContentLoaded", function() {
-      "use strict";
-      
-      /***********************
-       * Helper Functions
-       ***********************/
-      function formatTime(seconds) {
-        const m = Math.floor(seconds / 60);
-        const s = Math.floor(seconds % 60);
-        return m.toString().padStart(2, '0') + ":" + s.toString().padStart(2, '0');
+    "use strict";
+    
+    // MQTT configuration
+    const APP_ID = "UniqueAppID_for_training_sessions";
+    const clientId = "coach_dashboard_" + Math.floor(Math.random() * 1000);
+    
+    // Create an MQTT client for the coach dashboard.
+    const mqttClient = new Paho.MQTT.Client("mqtt.eclipseprojects.io", 80, "/mqtt", clientId);
+    
+    mqttClient.onConnectionLost = function(responseObject) {
+      console.log("Connection lost: " + responseObject.errorMessage);
+    };
+    
+    mqttClient.connect({
+      onSuccess: function() {
+        console.log("Coach MQTT client connected");
+      },
+      onFailure: function(message) {
+        console.log("MQTT connection failed: " + message.errorMessage);
       }
+    });
+    
+    // When the start button is clicked, first send a stop_plan message (non-retained)
+    // then, after a short delay, send a start_plan message.
+    document.getElementById("startButton").addEventListener("click", function() {
+      // Create and send a stop_plan message.
+      const stopPayload = { time: new Date().toISOString() };
+      const stopMsg = new Paho.MQTT.Message(JSON.stringify(stopPayload));
+      stopMsg.destinationName = APP_ID + "/stop_plan";
+      stopMsg.retained = false; // Ensure it is not retained.
+      mqttClient.send(stopMsg);
+      console.log("Stop plan message sent");
       
-      function getZoneColor(percent) {
-        if (percent < 60) return "grey";
-        else if (percent <= 75) return "blue";
-        else if (percent <= 89) return "green";
-        else if (percent <= 104) return "yellow";
-        else if (percent <= 118) return "orange";
-        else return "red";
-      }
-      
-      function getMutedColor(zoneColor) {
-        const muted = {
-          "grey": "rgba(128,128,128,0.3)",
-          "blue": "rgba(0,0,255,0.3)",
-          "green": "rgba(0,128,0,0.3)",
-          "yellow": "rgba(255,255,0,0.3)",
-          "orange": "rgba(255,165,0,0.3)",
-          "red": "rgba(255,0,0,0.3)"
-        };
-        return muted[zoneColor] || zoneColor;
-      }
-      
-      /***********************
-       * Global Variables & Workout Plan Loading
-       ***********************/
-      // Get the plan index from the query string.
-      const urlParams = new URLSearchParams(window.location.search);
-      const planIndex = parseInt(urlParams.get("plan"), 10);
-      
-      let selectedWorkout = null;
-      
-      // Workout control variables.
-      let planStarted = false;
-      let planStartTime = 0;
-      
-      // Load the workout plans from example_workout_plans.json.
-      fetch("example_workout_plans.json")
-        .then(response => response.json())
-        .then(data => {
-          const plans = data.workout_plans;
-          if (isNaN(planIndex) || planIndex < 0 || planIndex >= plans.length) {
-            alert("Invalid workout plan selected.");
-            return;
-          }
-          selectedWorkout = plans[planIndex];
-          document.getElementById("workoutName").textContent = selectedWorkout.name;
-          const minutes = Math.floor(selectedWorkout.duration / 60);
-          const seconds = selectedWorkout.duration % 60;
-          document.getElementById("workoutDuration").textContent = "Duration: " + minutes + "m " + seconds + "s";
-          drawDashboard();
-        })
-        .catch(error => {
-          console.error("Error loading workout plans:", error);
-        });
-      
-      /***********************
-       * Measured Power History & Rider Variables
-       ***********************/
-      let measuredPowerHistory = {};  // { uuid: [ { t, percent }, ... ] }
-      let riderFtpMap = {};           // { uuid: ftp } (default is 100)
-      let riderColors = {};           // { uuid: color }
-      const colorPalette = ["#0ff", "#f0f", "#ff0", "#0f0", "#00f", "#f00", "#ffa500", "#800080", "#008080", "#ff69b4", "#a52a2a", "#5f9ea0", "#d2691e", "#ff1493", "#7fff00", "#ffd700", "#dc143c", "#00ced1", "#9932cc", "#ff7f50"];
-      let nextColorIndex = 0;
-      function assignColorToRider(uuid) {
-        if (!riderColors[uuid]) {
-          riderColors[uuid] = colorPalette[nextColorIndex % colorPalette.length];
-          nextColorIndex++;
-        }
-        return riderColors[uuid];
-      }
-      
-      /***********************
-       * Workout Dashboard Module
-       ***********************/
-      const canvas = document.getElementById("workoutCanvas");
-      const ctx = canvas.getContext("2d");
-      
-      function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight * 0.8;
-      }
-      window.addEventListener("resize", resizeCanvas);
-      resizeCanvas();
-      
-      function drawDashboard() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // If selectedWorkout hasn't loaded yet, display a loading message.
-        if (!selectedWorkout) {
-          ctx.fillStyle = "#fff";
-          ctx.font = "48px Arial";
-          ctx.textAlign = "center";
-          ctx.fillText("Loading workout plan...", canvas.width / 2, canvas.height / 2);
-          return;
-        }
-        
-        // If the workout hasn't started, treat elapsed time as 0.
-        let elapsed = 0;
-        if (planStarted) {
-          elapsed = (Date.now() - planStartTime) / 1000;
-        }
-        
-        const totalDuration = selectedWorkout ? selectedWorkout.duration : 0;
-        
-        if (!planStarted) {
-          drawPlanTimeline(true, 0);
-          ctx.fillStyle = "#fff";
-          ctx.font = "48px Arial";
-          ctx.textAlign = "center";
-          ctx.fillText("Waiting for workout start...", canvas.width / 2, canvas.height / 2);
-          ctx.fillStyle = "#fff";
-          ctx.font = "32px Arial";
-          ctx.textAlign = "center";
-          ctx.fillText("Elapsed: " + formatTime(0) + "   |   Time to go: " + formatTime(totalDuration), canvas.width / 2, canvas.height - 40);
-          return;
-        }
-        
-        const currentStageInfo = getCurrentStage(elapsed);
-        let stageEndTime = totalDuration;
-        if (currentStageInfo && currentStageInfo.index < selectedWorkout.segments.length - 1) {
-          stageEndTime = selectedWorkout.segments[currentStageInfo.index + 1][0];
-        }
-        const stageRemaining = Math.max(stageEndTime - elapsed, 0);
-        
-        drawPlanTimeline(false, elapsed);
-        drawMeasuredPowerHistory();
-        
-        ctx.fillStyle = "#fff";
-        ctx.font = "32px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText("Elapsed: " + formatTime(elapsed) + "   |   Time to go: " + formatTime(stageRemaining), canvas.width / 2, canvas.height - 40);
-      }
-      
-      // Draw the target power graph as a step function.
-      function drawPlanTimeline(grayedOut, elapsed) {
-        if (!selectedWorkout) return;
-        
-        const marginLeft = 50;
-        const marginRight = 50;
-        const marginTop = 50;
-        const marginBottom = 50;
-        const plotWidth = canvas.width - marginLeft - marginRight;
-        const plotHeight = canvas.height - marginTop - marginBottom;
-        const totalDuration = selectedWorkout ? selectedWorkout.duration : 0;
-        const maxY = 150;
-        
-        ctx.strokeStyle = "#555";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(marginLeft, canvas.height - marginBottom);
-        ctx.lineTo(canvas.width - marginRight, canvas.height - marginBottom);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(marginLeft, marginTop);
-        ctx.lineTo(marginLeft, canvas.height - marginBottom);
-        ctx.stroke();
-        
-        ctx.fillStyle = "#fff";
-        ctx.font = "16px Arial";
-        ctx.textAlign = "right";
-        ctx.fillText("Total: " + formatTime(totalDuration), canvas.width - marginRight, canvas.height - marginBottom + 20);
-        
-        let stepPoints = [];
-        const segments = selectedWorkout.segments;
-        for (let i = 0; i < segments.length; i++) {
-          const segment = segments[i];
-          const startTime = segment[0];
-          let endTime = totalDuration;
-          if (i < segments.length - 1) {
-            endTime = segments[i+1][0];
-          }
-          const xStart = marginLeft + (startTime / totalDuration) * plotWidth;
-          const xEnd = marginLeft + (endTime / totalDuration) * plotWidth;
-          const y = marginTop + (1 - (segment[1] / maxY)) * plotHeight;
-          stepPoints.push({ x: xStart, y: y, t: startTime, p: segment[1] });
-          stepPoints.push({ x: xEnd, y: y, t: endTime, p: segment[1] });
-        }
-        
-        const currentX = marginLeft + (Math.min(elapsed, totalDuration) / totalDuration) * plotWidth;
-        
-        ctx.globalAlpha = 0.5;
-        for (let i = 0; i < stepPoints.length - 1; i += 2) {
-          const p1 = stepPoints[i];
-          const p2 = stepPoints[i+1];
-          const vividColor = getZoneColor(p1.p);
-          const mutedColor = getMutedColor(vividColor);
-          
-          if (elapsed === 0 || currentX <= p1.x) {
-            ctx.fillStyle = mutedColor;
-            ctx.beginPath();
-            ctx.moveTo(p1.x, canvas.height - marginBottom);
-            ctx.lineTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.lineTo(p2.x, canvas.height - marginBottom);
-            ctx.closePath();
-            ctx.fill();
-          } else if (currentX >= p2.x) {
-            ctx.fillStyle = vividColor;
-            ctx.beginPath();
-            ctx.moveTo(p1.x, canvas.height - marginBottom);
-            ctx.lineTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.lineTo(p2.x, canvas.height - marginBottom);
-            ctx.closePath();
-            ctx.fill();
-          } else {
-            ctx.fillStyle = vividColor;
-            ctx.beginPath();
-            ctx.moveTo(p1.x, canvas.height - marginBottom);
-            ctx.lineTo(p1.x, p1.y);
-            ctx.lineTo(currentX, p1.y);
-            ctx.lineTo(currentX, canvas.height - marginBottom);
-            ctx.closePath();
-            ctx.fill();
-            
-            ctx.fillStyle = mutedColor;
-            ctx.beginPath();
-            ctx.moveTo(currentX, canvas.height - marginBottom);
-            ctx.lineTo(currentX, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.lineTo(p2.x, canvas.height - marginBottom);
-            ctx.closePath();
-            ctx.fill();
-          }
-        }
-        ctx.globalAlpha = 1.0;
-        
-        ctx.strokeStyle = "#f80";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        if (stepPoints.length > 0) {
-          ctx.moveTo(stepPoints[0].x, stepPoints[0].y);
-          for (let i = 1; i < stepPoints.length; i++) {
-            ctx.lineTo(stepPoints[i].x, stepPoints[i].y);
-          }
-        }
-        ctx.stroke();
-        
-        if (planStarted) {
-          ctx.strokeStyle = "#fff";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(currentX, marginTop);
-          ctx.lineTo(currentX, canvas.height - marginBottom);
-          ctx.stroke();
-        }
-      }
-      
-      function drawMeasuredPowerHistory() {
-        const marginLeft = 50;
-        const marginRight = 50;
-        const marginTop = 50;
-        const marginBottom = 80;
-        const plotWidth = canvas.width - marginLeft - marginRight;
-        const plotHeight = canvas.height - marginTop - marginBottom;
-        const totalDuration = selectedWorkout ? selectedWorkout.duration : 0;
-        const maxY = 150;
-        
-        for (let uuid in measuredPowerHistory) {
-          const history = measuredPowerHistory[uuid];
-          if (!history || history.length === 0) continue;
-          const color = assignColorToRider(uuid);
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          history.forEach((point, index) => {
-            const x = marginLeft + (point.t / totalDuration) * plotWidth;
-            const y = marginTop + (1 - (point.percent / maxY)) * plotHeight;
-            if (index === 0) {
-              ctx.moveTo(x, y);
-            } else {
-              ctx.lineTo(x, y);
-            }
-          });
-          ctx.stroke();
-        }
-      }
-      
-      function drawDashboard() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // If workout hasn't started, treat elapsed as 0.
-        let elapsed = 0;
-        if (planStarted) {
-          elapsed = (Date.now() - planStartTime) / 1000;
-        }
-        
-        const totalDuration = selectedWorkout ? selectedWorkout.duration : 0;
-        
-        if (!planStarted) {
-          drawPlanTimeline(true, 0);
-          ctx.fillStyle = "#fff";
-          ctx.font = "48px Arial";
-          ctx.textAlign = "center";
-          ctx.fillText("Waiting for workout start...", canvas.width / 2, canvas.height / 2);
-          ctx.fillStyle = "#fff";
-          ctx.font = "32px Arial";
-          ctx.textAlign = "center";
-          ctx.fillText("Elapsed: " + formatTime(0) + "   |   Time to go: " + formatTime(totalDuration), canvas.width / 2, canvas.height - 40);
-          return;
-        }
-        
-        drawPlanTimeline(false, elapsed);
-        drawMeasuredPowerHistory();
-        
-        const currentStageInfo = getCurrentStage(elapsed);
-        let stageEndTime = totalDuration;
-        if (currentStageInfo && currentStageInfo.index < selectedWorkout.segments.length - 1) {
-          stageEndTime = selectedWorkout.segments[currentStageInfo.index + 1][0];
-        }
-        const stageRemaining = Math.max(stageEndTime - elapsed, 0);
-        
-        ctx.fillStyle = "#fff";
-        ctx.font = "32px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText("Elapsed: " + formatTime(elapsed) + "   |   Time to go: " + formatTime(stageRemaining), canvas.width / 2, canvas.height - 40);
-      }
-      
-      function animate() {
-        drawDashboard();
-        requestAnimationFrame(animate);
-      }
-      
-      animate();
-      
-      /***********************
-       * MQTT Integration
-       ***********************/
-      const APP_ID = "UniqueAppID_for_training_sessions";
-      const clientId = "web_client_" + Math.floor(Math.random() * 100);
-      const MQTT_BROKER_HOST = "mqtt.eclipseprojects.io";
-      const MQTT_BROKER_PORT = 80;
-      
-      const mqttClient = new Paho.MQTT.Client(MQTT_BROKER_HOST, MQTT_BROKER_PORT, "/mqtt", clientId);
-      
-      mqttClient.onConnectionLost = function(responseObject) {
-        console.log("Connection lost: " + responseObject.errorMessage);
-      };
-      
-      mqttClient.onMessageArrived = function(message) {
-        if (!message.payloadString || message.payloadString.trim() === "") {
-          console.log("Empty MQTT payload, skipping parsing.");
-          return;
-        }
-        console.log("MQTT message arrived on topic " + message.destinationName + ": " + message.payloadString);
-        try {
-          const data = JSON.parse(message.payloadString);
-          const topic = message.destinationName;
-          if (topic.endsWith("send_plan")) {
-            if (data.training_plan && Array.isArray(data.training_plan)) {
-              trainingPlan = data.training_plan.map(stageArr => [
-                stageArr[0],
-                stageArr[1],
-                stageArr[2],
-                stageArr[3]
-              ]);
-              // Reset measured power history and workout timer.
-              measuredPowerHistory = {};
-              planStarted = false;
-              planStartTime = 0;
-              console.log("Training plan updated via send_plan message. Timer and measured power history reset.");
-            }
-          } else if (topic.endsWith("start_plan")) {
-            planStarted = true;
-            planStartTime = Date.now();
-            measuredPowerHistory = {};
-            riderFtpMap = {};
-            console.log("Training plan started.");
-            // Schedule target messages for each segment.
-            scheduleTargetMessages();
-          }
-          else if (topic.endsWith("set_measured_power")) {
-            if (data.measured_power !== undefined && data.uuid_trainer) {
-              const uuid = data.uuid_trainer;
-              if (!measuredPowerHistory[uuid]) {
-                measuredPowerHistory[uuid] = [];
-              }
-              if (!riderFtpMap[uuid]) {
-                riderFtpMap[uuid] = 100;
-              }
-              const percent = (data.measured_power / riderFtpMap[uuid]) * 100;
-              const currentElapsed = (Date.now() - planStartTime) / 1000;
-              measuredPowerHistory[uuid].push({ t: currentElapsed, percent: percent });
-            }
-          }
-          else if (topic.endsWith("set_ftp")) {
-            if (data.ftp !== undefined && data.uuid_trainer) {
-              const uuid = data.uuid_trainer;
-              riderFtpMap[uuid] = data.ftp;
-              console.log("FTP for rider " + uuid + " updated to " + data.ftp);
-            }
-          }
-        } catch (err) {
-          console.error("Error parsing MQTT JSON:", err);
-        }
-      };
-      
-      mqttClient.connect({
-        onSuccess: function() {
-          console.log("Connected to MQTT broker");
-          mqttClient.subscribe(APP_ID + "/#");
-          const listDevicesMsg = new Paho.MQTT.Message("");
-          listDevicesMsg.destinationName = APP_ID + "/list_devices";
-          mqttClient.send(listDevicesMsg);
-        },
-        onFailure: function(message) {
-          console.log("MQTT Connection failed: " + message.errorMessage);
-        }
-      });
-      
-      /***********************
-       * Target Message Scheduling
-       ***********************/
-      // Once the workout starts, schedule target messages for each segment.
-      // Each segment is of the form: [startTime (s), target_power (%), target_cadence, description]
-      function scheduleTargetMessages() {
-        if (!selectedWorkout) return;
-        const segments = selectedWorkout.segments;
-        segments.forEach(segment => {
-          const delay = segment[0] * 1000; // delay in milliseconds
-          setTimeout(() => {
-            const powerPayload = JSON.stringify({
-              target_power: segment[1],
-              time: new Date().toISOString()
-            });
-            const cadencePayload = JSON.stringify({
-              target_cadence: segment[2],
-              time: new Date().toISOString()
-            });
-            const powerMsg = new Paho.MQTT.Message(powerPayload);
-            powerMsg.destinationName = APP_ID + "/set_target_power";
-            mqttClient.send(powerMsg);
-            const cadenceMsg = new Paho.MQTT.Message(cadencePayload);
-            cadenceMsg.destinationName = APP_ID + "/set_target_cadence";
-            mqttClient.send(cadenceMsg);
-            console.log("Sent target messages for segment starting at " + segment[0] + "s");
-          }, delay);
-        });
-      }
-      
-      // "Start Workout" button sends a start_plan message and schedules target messages.
-      document.getElementById("startButton").addEventListener("click", function() {
-        if (!selectedWorkout) return;
-        const payload = JSON.stringify({
-          training_plan: selectedWorkout.segments,
-          workout_name: selectedWorkout.name,
-          duration: selectedWorkout.duration,
-          time: new Date().toISOString()
-        });
-        const msg = new Paho.MQTT.Message(payload);
-        msg.destinationName = APP_ID + "/start_plan";
-        msg.retained = true;  // Retain the message so new subscribers get it.
-        mqttClient.send(msg);
-        console.log("Sent retained start_plan message with selected workout.");
-        this.disabled = true;
-        this.textContent = "Workout Started";
-        // Schedule clearing of the retained message after 5 seconds.
-        setTimeout(() => {
-          const clearMsg = new Paho.MQTT.Message("");
-          clearMsg.destinationName = APP_ID + "/start_plan";
-          clearMsg.retained = true;
-          mqttClient.send(clearMsg);
-          console.log("Cleared retained start_plan message after 5 seconds.");
-        }, 5000);
-      });
-      
+      // Wait 500ms, then send a start_plan message.
+      setTimeout(function() {
+        const startPayload = { time: new Date().toISOString() };
+        const startMsg = new Paho.MQTT.Message(JSON.stringify(startPayload));
+        startMsg.destinationName = APP_ID + "/start_plan";
+        startMsg.retained = false; // Do not retain this message.
+        mqttClient.send(startMsg);
+        console.log("Start workout message sent");
+      }, 500);
     });
   </script>
 </body>

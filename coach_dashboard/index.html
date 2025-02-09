@@ -45,7 +45,7 @@
   <h1>Coach Dashboard – Workout Plans</h1>
   <div id="workoutList"></div>
 
-  <!-- MQTT and plan index script -->
+  <!-- Include the Paho MQTT client library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
   <script>
     "use strict";
@@ -56,7 +56,7 @@
     const APP_ID = "UniqueAppID_for_training_sessions";
     const clientId = "web_client_" + Math.floor(Math.random() * 100);
     
-    // Create a MQTT client for sending the plan message.
+    // Create a MQTT client for sending the plan messages.
     const mqttClient = new Paho.MQTT.Client(MQTT_BROKER_HOST, MQTT_BROKER_PORT, "/mqtt", clientId);
     
     mqttClient.onConnectionLost = function(responseObject) {
@@ -110,21 +110,33 @@
         plans.forEach((plan, index) => {
           const card = document.createElement("div");
           card.className = "workout-card";
-          // When clicked, send a send_plan message and open workout.html.
+          
+          // When clicked, execute the following sequence:
           card.addEventListener("click", function() {
-            // Send the plan details as a send_plan MQTT message.
-            const payload = JSON.stringify({
-              training_plan: plan.segments,
-              workout_name: plan.name,
-              duration: plan.duration,
-              time: new Date().toISOString()
-            });
-            const msg = new Paho.MQTT.Message(payload);
-            msg.destinationName = APP_ID + "/send_plan";
-            mqttClient.send(msg);
-            console.log("Sent send_plan message for plan index " + index);
-            // Open workout.html in a new tab with a query parameter.
-            window.open("workout.html?plan=" + index, "_blank");
+            // 1. Send a non-retained stop_plan message.
+            const stopPayload = JSON.stringify({ time: new Date().toISOString() });
+            const stopMsg = new Paho.MQTT.Message(stopPayload);
+            stopMsg.destinationName = APP_ID + "/stop_plan";
+            stopMsg.retained = false;
+            mqttClient.send(stopMsg);
+            console.log("Sent stop_plan message for plan index " + index);
+            
+            // 2. Open workout.html in a new tab.
+            window.open("workout.html", "_blank");
+            
+            // 3. Wait 1 second, then send a send_plan message with the selected plan.
+            setTimeout(function() {
+              const payload = JSON.stringify({
+                training_plan: plan.segments,
+                workout_name: plan.name,
+                duration: plan.duration,
+                time: new Date().toISOString()
+              });
+              const msg = new Paho.MQTT.Message(payload);
+              msg.destinationName = APP_ID + "/send_plan";
+              mqttClient.send(msg);
+              console.log("Sent send_plan message for plan index " + index);
+            }, 1000);
           });
           
           const title = document.createElement("h2");
@@ -193,7 +205,6 @@
       
       ctx.globalAlpha = 0.5;
       stepPoints.forEach((pt, i) => {
-        // Fill entire segments with muted colors.
         if (i % 2 === 0 && i+1 < stepPoints.length) {
           const p1 = pt;
           const p2 = stepPoints[i+1];

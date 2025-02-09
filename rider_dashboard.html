@@ -72,6 +72,16 @@
       margin-left: 5px;
       font-weight: bold;
     }
+    /* Download Ride button styling */
+    #downloadRideButton {
+      padding: 10px 15px;
+      font-size: 16px;
+      cursor: pointer;
+      background-color: #444;
+      border: none;
+      color: #fff;
+      border-radius: 4px;
+    }
     
     /* Media query for smaller screens (phones) */
     @media (max-width: 600px) {
@@ -105,6 +115,8 @@
       <input type="text" id="ftpText" value="100" disabled>
       <span>W</span>
     </div>
+    <!-- Download Ride Button -->
+    <button id="downloadRideButton">Download Ride</button>
   </div>
   <!-- Toggle Button -->
   <div id="togglePanelButton">Settings</div>
@@ -118,14 +130,74 @@
     "use strict";
     
     /***********************
-     * Dashboard Module
+     * Global Ride Data Collection
+     ***********************/
+    var rideData = [];
+    
+    // Simulate ride data collection every second.
+    setInterval(function() {
+      var now = new Date();
+      var dataPoint = {
+        time: now.toISOString(),
+        power: Dashboard ? Dashboard.currentPower : 100,
+        cadence: Dashboard ? Dashboard.currentCadence : 90
+      };
+      rideData.push(dataPoint);
+    }, 1000);
+    
+    /***********************
+     * GPX Generation and Download
+     ***********************/
+    function generateGPX() {
+      const baseLat = 0.0;
+      const lon = 0.0;
+      var gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RiderDashboard" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Trainer Ride</name>
+    <type>Virtual Ride</type>
+    <trkseg>`;
+      
+      rideData.forEach(function(point) {
+        gpx += `
+      <trkpt lat="0.0" lon="0.0">
+        <time>${point.time}</time>
+        <extensions>
+          <power>${point.power}</power>
+          <cadence>${point.cadence}</cadence>
+        </extensions>
+      </trkpt>`;
+      });
+      
+      gpx += `
+    </trkseg>
+  </trk>
+</gpx>`;
+      
+      return gpx;
+    }
+    
+    document.getElementById("downloadRideButton").addEventListener("click", function() {
+      var gpxContent = generateGPX();
+      var blob = new Blob([gpxContent], { type: "application/gpx+xml" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "ride.gpx";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+    
+    /***********************
+     * Rider Dashboard Code (Existing)
      ***********************/
     const Dashboard = {
       canvas: document.getElementById("dashboard"),
       ctx: document.getElementById("dashboard").getContext("2d"),
-      // Rider/Trainer parameters:
       currentPower: 120,          // Measured power in raw watts
-      targetPower: 150,           // Target power as a percentage (e.g., 150 means 150%)
+      targetPower: 150,           // Target power as a percentage
       maxPower: 200,
       currentCadence: 90,
       targetCadence: 100,
@@ -135,7 +207,6 @@
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
       },
-      // Helper functions:
       percentToAngle: function(percent, maxPercent) {
         const angleDegrees = -240 + percent * 1.5;
         return angleDegrees * Math.PI / 180;
@@ -163,27 +234,6 @@
         };
         return muted[color] || color;
       },
-      drawZoneWedges: function(ctx, center, radius, maxPercent) {
-        const zones = [
-          { from: 0, to: 60, color: this.getMutedColor("grey") },
-          { from: 60, to: 75, color: this.getMutedColor("blue") },
-          { from: 75, to: 89, color: this.getMutedColor("green") },
-          { from: 89, to: 104, color: this.getMutedColor("yellow") },
-          { from: 104, to: 118, color: this.getMutedColor("orange") },
-          { from: 118, to: maxPercent, color: this.getMutedColor("red") }
-        ];
-        zones.forEach(zone => {
-          let startAngle = this.percentToAngle(zone.from, maxPercent);
-          let endAngle = this.percentToAngle(zone.to, maxPercent);
-          if (startAngle > endAngle) { startAngle -= 2 * Math.PI; }
-          ctx.beginPath();
-          ctx.moveTo(center.x, center.y);
-          ctx.arc(center.x, center.y, radius, startAngle, endAngle, false);
-          ctx.closePath();
-          ctx.fillStyle = zone.color;
-          ctx.fill();
-        });
-      },
       getCadenceZoneColor: function(cadence) {
         if (cadence < 60) return "grey";
         else if (cadence < 70) return "blue";
@@ -193,16 +243,28 @@
         else return "red";
       },
       
-      // Draws a dial.
-      // For the watts dial (useWedges === true, dialType "watts"):
-      //   'value' is measured power (raw watts)
-      //   'target' is target power as a percentage.
-      // For the cadence dial (useWedges === false, dialType "cadence"):
-      //   'value' and 'target' are raw cadence values.
       drawDial: function(ctx, center, value, target, label, maxValue, radius, extraLabel, zoneColor, useWedges, dialType) {
         if (useWedges) {
           const maxPercent = 150;
-          this.drawZoneWedges(ctx, center, radius, maxPercent);
+          const zones = [
+            { from: 0, to: 60, color: this.getMutedColor("grey") },
+            { from: 60, to: 75, color: this.getMutedColor("blue") },
+            { from: 75, to: 89, color: this.getMutedColor("green") },
+            { from: 89, to: 104, color: this.getMutedColor("yellow") },
+            { from: 104, to: 118, color: this.getMutedColor("orange") },
+            { from: 118, to: maxPercent, color: this.getMutedColor("red") }
+          ];
+          zones.forEach(zone => {
+            let startAngle = this.percentToAngle(zone.from, maxPercent);
+            let endAngle = this.percentToAngle(zone.to, maxPercent);
+            if (startAngle > endAngle) { startAngle -= 2 * Math.PI; }
+            ctx.beginPath();
+            ctx.moveTo(center.x, center.y);
+            ctx.arc(center.x, center.y, radius, startAngle, endAngle, false);
+            ctx.closePath();
+            ctx.fillStyle = zone.color;
+            ctx.fill();
+          });
         } else {
           ctx.beginPath();
           ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
@@ -239,7 +301,7 @@
         let currentAngle, targetAngle;
         if (useWedges) {
           let measuredPercent = (value / this.trainerFtp) * 100;
-          let tPercent = target;  // target is provided as a percentage
+          let tPercent = target;
           currentAngle = this.valueToAngle(measuredPercent, 200);
           targetAngle = this.valueToAngle(tPercent, 200);
         } else {
@@ -299,13 +361,12 @@
         ctx.lineWidth = 2;
         ctx.stroke();
       
-        // Draw text.
+        // Draw dial labels.
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         const fontSize = Math.floor(radius * 0.15);
         ctx.font = `${fontSize}px Arial`;
         if (dialType === "watts") {
-          // For the watts dial:
           const measuredPercent = Math.round((value / this.trainerFtp) * 100);
           const measuredText = value.toString() + " W (" + measuredPercent.toString() + "%)";
           const computedTargetWatts = Math.round(this.trainerFtp * target / 100);
@@ -317,7 +378,6 @@
           ctx.fillStyle = targetColor;
           ctx.fillText(targetText, center.x, center.y + radius * 0.65);
         } else if (dialType === "cadence") {
-          // For the cadence dial: top line shows measured/target cadence, bottom line "RPM"
           ctx.fillStyle = "rgb(255,255,255)";
           ctx.fillText(value.toString() + "/" + target.toString(), center.x, center.y + radius * 0.45);
           ctx.fillText("RPM", center.x, center.y + radius * 0.65);
@@ -379,7 +439,7 @@
     Dashboard.animate();
     
     /***********************
-     * MQTT Integration
+     * MQTT Integration for Rider Dashboard
      ***********************/
     const APP_ID = "UniqueAppID_for_training_sessions";
     const clientId = "web_client_" + Math.floor(Math.random() * 100);
@@ -412,34 +472,51 @@
           }
         } else if (topic.endsWith("set_target_power")) {
           if (data.target_power !== undefined) {
-            // target_power is provided as a percentage.
             if (!data.uuid_trainer || data.uuid_trainer === pairedTrainerId) {
               Dashboard.targetPower = data.target_power;
             }
           }
         } else if (topic.endsWith("set_measured_power")) {
           if (data.measured_power !== undefined) {
-            // Measured power is in raw watts.
+            // Update the dropdown if a new uuid_trainer is found.
+            if (data.uuid_trainer) {
+              var selectElem = document.getElementById("trainerSelect");
+              var exists = false;
+              for (var i = 0; i < selectElem.options.length; i++) {
+                if (selectElem.options[i].value === data.uuid_trainer) {
+                  exists = true;
+                  break;
+                }
+              }
+              if (!exists) {
+                var option = document.createElement("option");
+                option.value = data.uuid_trainer;
+                option.textContent = data.uuid_trainer;
+                selectElem.appendChild(option);
+              }
+            }
             if (!data.uuid_trainer || data.uuid_trainer === pairedTrainerId) {
               Dashboard.currentPower = data.measured_power;
             }
           }
         } else if (topic.endsWith("set_ftp")) {
           if (data.ftp !== undefined) {
+            // Update Dashboard.trainerFtp AND update the slider and text if the uuid_trainer matches.
             if (!data.uuid_trainer || data.uuid_trainer === pairedTrainerId) {
               Dashboard.trainerFtp = data.ftp;
+              // Update the FTP slider and text box.
+              document.getElementById("ftpSlider").value = data.ftp;
+              document.getElementById("ftpText").value = data.ftp;
             }
           }
         } else if (topic.endsWith("set_target_cadence")) {
           if (data.target_cadence !== undefined) {
-            // target_cadence is provided as a raw number.
             if (!data.uuid_trainer || data.uuid_trainer === pairedTrainerId) {
               Dashboard.targetCadence = data.target_cadence;
             }
           }
         } else if (topic.endsWith("set_measured_cadence")) {
           if (data.measured_cadence !== undefined) {
-            // measured_cadence is provided as a raw number.
             if (!data.uuid_trainer || data.uuid_trainer === pairedTrainerId) {
               Dashboard.currentCadence = data.measured_cadence;
             }
@@ -520,7 +597,7 @@
       }
     });
     
-    // Prevent clicks on the toggle button from propagating to the dashboard.
+    // Toggle the side panel.
     document.getElementById("togglePanelButton").addEventListener("click", function(e) {
       e.stopPropagation();
       document.getElementById("sidePanel").classList.toggle("open");

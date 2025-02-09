@@ -32,9 +32,6 @@
     document.addEventListener("DOMContentLoaded", function() {
       "use strict";
       
-      // Constant for the bottom text font size.
-      const BOTTOM_TEXT_FONT = "64px Arial";
-      
       /***********************
        * Helper Functions
        ***********************/
@@ -44,7 +41,6 @@
         return m.toString().padStart(2, '0') + ":" + s.toString().padStart(2, '0');
       }
       
-      // getZoneColor returns a vivid color based on the target power percent.
       function getZoneColor(value) {
         if (value < 60) return "grey";
         else if (value <= 75) return "blue";
@@ -54,7 +50,6 @@
         else return "red";
       }
       
-      // getMutedColor returns a muted version (with transparency) of the given color.
       function getMutedColor(zoneColor) {
         const muted = {
           "grey": "rgba(128,128,128,0.3)",
@@ -70,8 +65,7 @@
       /***********************
        * Global Variables & Training Plan
        ***********************/
-      // trainingPlan holds the current workout plan (updated via send_plan messages).
-      let trainingPlan = [
+      var trainingPlan = [
         [0, 50, 90, "Warmup"],
         [120, 100, 80, "Interval"],
         [180, 50, 80, "Rest"],
@@ -83,19 +77,21 @@
         [720, 0, 85, "Stop"]
       ];
       
-      let planStarted = false;
-      let planStartTime = 0;
+      var planStarted = false;
+      var planStartTime = 0;
       
-      // Active target values (updated from set_target messages)
-      let activeTargetPower = null;    // in percent FTP
-      let activeTargetCadence = null;  // in rpm
+      // Active target values.
+      var activeTargetPower = null;    // in percent FTP
+      var activeTargetCadence = null;  // in rpm
       
-      // Measured power history for each rider.
-      let measuredPowerHistory = {};  // { uuid: [ { t, percent }, ... ] }
-      let riderFtpMap = {};           // { uuid: ftp } (default is 100)
-      let riderColors = {};           // { uuid: color }
-      const colorPalette = ["#0ff", "#f0f", "#ff0", "#0f0", "#00f", "#f00", "#ffa500", "#800080", "#008080", "#ff69b4", "#a52a2a", "#5f9ea0", "#d2691e", "#ff1493", "#7fff00", "#ffd700", "#dc143c", "#00ced1", "#9932cc", "#ff7f50"];
-      let nextColorIndex = 0;
+      // Measured power history per trainer.
+      var measuredPowerHistory = {};  // { uuid: [ { t, percent }, ... ] }
+      var riderFtpMap = {};           // { uuid: ftp } (default is 100)
+      
+      // For plotting, assign a unique color to each trainer.
+      var riderColors = {};
+      var colorPalette = ["#0ff", "#f0f", "#ff0", "#0f0", "#00f", "#f00", "#ffa500", "#800080", "#008080", "#ff69b4", "#a52a2a", "#5f9ea0", "#d2691e", "#ff1493", "#7fff00", "#ffd700", "#dc143c", "#00ced1", "#9932cc", "#ff7f50"];
+      var nextColorIndex = 0;
       function assignColorToRider(uuid) {
         if (!riderColors[uuid]) {
           riderColors[uuid] = colorPalette[nextColorIndex % colorPalette.length];
@@ -110,7 +106,7 @@
       
       function getCurrentStage(elapsed) {
         if (trainingPlan.length === 0) return null;
-        for (let i = 0; i < trainingPlan.length - 1; i++) {
+        for (var i = 0; i < trainingPlan.length - 1; i++) {
           if (elapsed >= trainingPlan[i][0] && elapsed < trainingPlan[i+1][0]) {
             return { index: i, stage: trainingPlan[i] };
           }
@@ -121,8 +117,8 @@
       /***********************
        * Dashboard (Team) Module
        ***********************/
-      const canvas = document.getElementById("projectorCanvas");
-      const ctx = canvas.getContext("2d");
+      var canvas = document.getElementById("projectorCanvas");
+      var ctx = canvas.getContext("2d");
       
       function resizeCanvas() {
         canvas.width = window.innerWidth;
@@ -131,87 +127,14 @@
       window.addEventListener("resize", resizeCanvas);
       resizeCanvas();
       
-      function drawDashboard() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        if (!trainingPlan) {
-          ctx.fillStyle = "#fff";
-          ctx.font = "48px Arial";
-          ctx.textAlign = "center";
-          ctx.fillText("Loading workout plan...", canvas.width / 2, canvas.height / 2);
-          return;
-        }
-        
-        let elapsed = 0;
-        if (planStarted) {
-          elapsed = (Date.now() - planStartTime) / 1000;
-        }
-        const totalDuration = getTotalDuration();
-        // Cap elapsed time at totalDuration so the timer stops at the end.
-        if (elapsed > totalDuration) {
-          elapsed = totalDuration;
-        }
-        
-        if (!planStarted) {
-          drawPlanTimeline(true, 0);
-          ctx.fillStyle = "#fff";
-          ctx.font = "48px Arial";
-          ctx.textAlign = "center";
-          ctx.fillText("Waiting for plan to start...", canvas.width / 2, canvas.height / 2);
-          ctx.fillStyle = "#fff";
-          ctx.font = BOTTOM_TEXT_FONT;
-          ctx.textAlign = "center";
-          ctx.fillText("Elapsed: " + formatTime(0) + " | Time to go: " + formatTime(totalDuration), canvas.width / 2, canvas.height - 40);
-        } else {
-          const currentStageInfo = getCurrentStage(elapsed);
-          let stageEndTime = totalDuration;
-          if (currentStageInfo && currentStageInfo.index < trainingPlan.length - 1) {
-            stageEndTime = trainingPlan[currentStageInfo.index + 1][0];
-          }
-          const stageRemaining = Math.max(stageEndTime - elapsed, 0);
-          
-          drawPlanTimeline(false, elapsed);
-          drawMeasuredPowerHistory();
-          
-          ctx.fillStyle = "#fff";
-          ctx.font = BOTTOM_TEXT_FONT;
-          ctx.textAlign = "center";
-          ctx.fillText("Elapsed: " + formatTime(elapsed) + " | Time to go: " + formatTime(stageRemaining), canvas.width / 2, canvas.height - 40);
-        }
-        
-        // Overlay the active target values as a single line at the top center.
-        if (activeTargetPower !== null && activeTargetCadence !== null) {
-          ctx.font = "64px Arial";
-          ctx.textAlign = "center";
-          // Use light blue only if the vivid training zone color is blue.
-          let overlayColor = getZoneColor(activeTargetPower);
-          if (overlayColor === "blue") {
-            overlayColor = "#add8e6";
-          }
-          ctx.fillStyle = overlayColor;
-          const overlayText = activeTargetPower + "% @ " + activeTargetCadence + " RPM";
-          ctx.fillText(overlayText, canvas.width / 2, 60);
-        }
-        
-        // If the workout is complete, overlay a "Workout Complete" message.
-        if (planStarted && elapsed >= getTotalDuration()) {
-          ctx.font = "96px Arial";
-          ctx.textAlign = "center";
-          ctx.fillStyle = "#fff";
-          ctx.fillText("Workout Complete", canvas.width / 2, canvas.height / 2);
-        }
-      }
-      
-      // Draw the training plan as a step function.
-      function drawPlanTimeline(grayedOut, elapsed) {
-        const marginLeft = 50;
-        const marginRight = 50;
-        const marginTop = 50;
-        const marginBottom = 50;
-        const plotWidth = canvas.width - marginLeft - marginRight;
-        const plotHeight = canvas.height - marginTop - marginBottom;
-        const totalDuration = getTotalDuration();
-        const maxY = 150;
+      function drawPlanTimeline(grayedOut, elapsed, maxY) {
+        var marginLeft = 50;
+        var marginRight = 50;
+        var marginTop = 50;
+        var marginBottom = 50;
+        var plotWidth = canvas.width - marginLeft - marginRight;
+        var plotHeight = canvas.height - marginTop - marginBottom;
+        var totalDuration = getTotalDuration();
         
         ctx.strokeStyle = "#555";
         ctx.lineWidth = 1;
@@ -224,35 +147,34 @@
         ctx.lineTo(marginLeft, canvas.height - marginBottom);
         ctx.stroke();
         
-        // Draw the total time text using the bottom text font.
         ctx.fillStyle = "#fff";
-        ctx.font = BOTTOM_TEXT_FONT;
+        ctx.font = "64px Arial";
         ctx.textAlign = "right";
-        ctx.fillText("Total: " + formatTime(totalDuration), canvas.width - marginRight, canvas.height - marginBottom + 20);
+        ctx.fillText("Total: " + formatTime(getTotalDuration()), canvas.width - marginRight, canvas.height - marginBottom + 20);
         
-        let stepPoints = [];
-        for (let i = 0; i < trainingPlan.length; i++) {
-          const stage = trainingPlan[i];
-          const startTime = stage[0];
-          let endTime = totalDuration;
+        var stepPoints = [];
+        for (var i = 0; i < trainingPlan.length; i++) {
+          var stage = trainingPlan[i];
+          var startTime = stage[0];
+          var endTime = getTotalDuration();
           if (i < trainingPlan.length - 1) {
             endTime = trainingPlan[i+1][0];
           }
-          const xStart = marginLeft + (startTime / totalDuration) * plotWidth;
-          const xEnd = marginLeft + (endTime / totalDuration) * plotWidth;
-          const y = marginTop + (1 - (stage[1] / maxY)) * plotHeight;
+          var xStart = marginLeft + (startTime / getTotalDuration()) * plotWidth;
+          var xEnd = marginLeft + (endTime / getTotalDuration()) * plotWidth;
+          var y = marginTop + (1 - (stage[1] / maxY)) * plotHeight;
           stepPoints.push({ x: xStart, y: y, t: startTime, p: stage[1] });
           stepPoints.push({ x: xEnd, y: y, t: endTime, p: stage[1] });
         }
         
-        const currentX = marginLeft + (Math.min(elapsed, totalDuration) / totalDuration) * plotWidth;
+        var currentX = marginLeft + (Math.min(elapsed, getTotalDuration()) / getTotalDuration()) * plotWidth;
         
         ctx.globalAlpha = 0.5;
-        for (let i = 0; i < stepPoints.length - 1; i += 2) {
-          const p1 = stepPoints[i];
-          const p2 = stepPoints[i+1];
-          const vividColor = getZoneColor(p1.p);
-          const mutedColor = getMutedColor(vividColor);
+        for (var i = 0; i < stepPoints.length - 1; i += 2) {
+          var p1 = stepPoints[i];
+          var p2 = stepPoints[i+1];
+          var vividColor = getZoneColor(p1.p);
+          var mutedColor = getMutedColor(vividColor);
           
           if (elapsed === 0 || currentX <= p1.x) {
             ctx.fillStyle = mutedColor;
@@ -299,7 +221,7 @@
         ctx.beginPath();
         if (stepPoints.length > 0) {
           ctx.moveTo(stepPoints[0].x, stepPoints[0].y);
-          for (let i = 1; i < stepPoints.length; i++) {
+          for (var i = 1; i < stepPoints.length; i++) {
             ctx.lineTo(stepPoints[i].x, stepPoints[i].y);
           }
         }
@@ -315,26 +237,25 @@
         }
       }
       
-      function drawMeasuredPowerHistory() {
-        const marginLeft = 50;
-        const marginRight = 50;
-        const marginTop = 50;
-        const marginBottom = 80;
-        const plotWidth = canvas.width - marginLeft - marginRight;
-        const plotHeight = canvas.height - marginTop - marginBottom;
-        const totalDuration = getTotalDuration();
-        const maxY = 150;
+      function drawMeasuredPowerHistory(maxY) {
+        var marginLeft = 50;
+        var marginRight = 50;
+        var marginTop = 50;
+        var marginBottom = 80;
+        var plotWidth = canvas.width - marginLeft - marginRight;
+        var plotHeight = canvas.height - marginTop - marginBottom;
+        var totalDuration = getTotalDuration();
         
-        for (let uuid in measuredPowerHistory) {
-          const history = measuredPowerHistory[uuid];
+        for (var uuid in measuredPowerHistory) {
+          var history = measuredPowerHistory[uuid];
           if (!history || history.length === 0) continue;
-          const color = assignColorToRider(uuid);
+          var color = assignColorToRider(uuid);
           ctx.strokeStyle = color;
           ctx.lineWidth = 2;
           ctx.beginPath();
-          history.forEach((point, index) => {
-            const x = marginLeft + (point.t / totalDuration) * plotWidth;
-            const y = marginTop + (1 - (point.percent / maxY)) * plotHeight;
+          history.forEach(function(point, index) {
+            var x = marginLeft + (point.t / totalDuration) * plotWidth;
+            var y = marginTop + (1 - (point.percent / maxY)) * plotHeight;
             if (index === 0) {
               ctx.moveTo(x, y);
             } else {
@@ -348,57 +269,60 @@
       function drawDashboard() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        let elapsed = 0;
+        var elapsed = 0;
         if (planStarted) {
           elapsed = (Date.now() - planStartTime) / 1000;
         }
-        const totalDuration = getTotalDuration();
-        if (elapsed > totalDuration) {
-          elapsed = totalDuration;
+        var totalDuration = getTotalDuration();
+        if (elapsed > totalDuration) { elapsed = totalDuration; }
+        
+        // Compute dynamic maxY.
+        var planMax = Math.max(...trainingPlan.map(function(stage) { return stage[1]; }));
+        var measuredMax = 0;
+        for (var uuid in measuredPowerHistory) {
+          var localMax = Math.max(...measuredPowerHistory[uuid].map(function(pt) { return pt.percent; }));
+          measuredMax = Math.max(measuredMax, localMax);
         }
+        var dynamicMaxY = Math.max(150, planMax, measuredMax);
         
         if (!planStarted) {
-          drawPlanTimeline(true, 0);
+          drawPlanTimeline(true, 0, dynamicMaxY);
           ctx.fillStyle = "#fff";
           ctx.font = "48px Arial";
           ctx.textAlign = "center";
           ctx.fillText("Waiting for plan to start...", canvas.width / 2, canvas.height / 2);
           ctx.fillStyle = "#fff";
-          ctx.font = BOTTOM_TEXT_FONT;
+          ctx.font = "64px Arial";
           ctx.textAlign = "center";
           ctx.fillText("Elapsed: " + formatTime(0) + " | Time to go: " + formatTime(totalDuration), canvas.width / 2, canvas.height - 40);
         } else {
-          const currentStageInfo = getCurrentStage(elapsed);
-          let stageEndTime = totalDuration;
+          var currentStageInfo = getCurrentStage(elapsed);
+          var stageEndTime = totalDuration;
           if (currentStageInfo && currentStageInfo.index < trainingPlan.length - 1) {
             stageEndTime = trainingPlan[currentStageInfo.index + 1][0];
           }
-          const stageRemaining = Math.max(stageEndTime - elapsed, 0);
+          var stageRemaining = Math.max(stageEndTime - elapsed, 0);
           
-          drawPlanTimeline(false, elapsed);
-          drawMeasuredPowerHistory();
+          drawPlanTimeline(false, elapsed, dynamicMaxY);
+          drawMeasuredPowerHistory(dynamicMaxY);
           
           ctx.fillStyle = "#fff";
-          ctx.font = BOTTOM_TEXT_FONT;
+          ctx.font = "64px Arial";
           ctx.textAlign = "center";
           ctx.fillText("Elapsed: " + formatTime(elapsed) + " | Time to go: " + formatTime(stageRemaining), canvas.width / 2, canvas.height - 40);
         }
         
-        // Overlay the active target values as a single line at the top center.
         if (activeTargetPower !== null && activeTargetCadence !== null) {
           ctx.font = "64px Arial";
           ctx.textAlign = "center";
-          let overlayColor = getZoneColor(activeTargetPower);
-          if (overlayColor === "blue") {
-            overlayColor = "#add8e6";
-          }
+          var overlayColor = getZoneColor(activeTargetPower);
+          if (overlayColor === "blue") { overlayColor = "#add8e6"; }
           ctx.fillStyle = overlayColor;
-          const overlayText = activeTargetPower + "% @ " + activeTargetCadence + " RPM";
+          var overlayText = activeTargetPower + "% @ " + activeTargetCadence + " RPM";
           ctx.fillText(overlayText, canvas.width / 2, 60);
         }
         
-        // If the workout is complete, overlay a "Workout Complete" message.
-        if (planStarted && elapsed >= getTotalDuration()) {
+        if (planStarted && elapsed >= totalDuration) {
           ctx.font = "96px Arial";
           ctx.textAlign = "center";
           ctx.fillStyle = "#fff";
@@ -408,20 +332,19 @@
       
       function animate() {
         drawDashboard();
-        requestAnimationFrame(animate);
+        requestAnimationFrame(function() { animate(); });
       }
       
       animate();
       
       /***********************
-       * MQTT Integration
+       * MQTT Integration for Team Dashboard
        ***********************/
-      const APP_ID = "UniqueAppID_for_training_sessions";
-      const clientId = "web_client_" + Math.floor(Math.random() * 100);
-      const MQTT_BROKER_HOST = "mqtt.eclipseprojects.io";
-      const MQTT_BROKER_PORT = 80;
+      var APP_ID = "UniqueAppID_for_training_sessions";
+      var clientId = "web_client_" + Math.floor(Math.random() * 100);
+      // No trainer pairing widgets are needed.
       
-      const mqttClient = new Paho.MQTT.Client(MQTT_BROKER_HOST, MQTT_BROKER_PORT, "/mqtt", clientId);
+      var mqttClient = new Paho.MQTT.Client("mqtt.eclipseprojects.io", 80, "/mqtt", clientId);
       
       mqttClient.onConnectionLost = function(responseObject) {
         console.log("Connection lost: " + responseObject.errorMessage);
@@ -434,16 +357,13 @@
         }
         console.log("MQTT message arrived on topic " + message.destinationName + ": " + message.payloadString);
         try {
-          const data = JSON.parse(message.payloadString);
-          const topic = message.destinationName;
+          var data = JSON.parse(message.payloadString);
+          var topic = message.destinationName;
           if (topic.endsWith("send_plan")) {
             if (data.training_plan && Array.isArray(data.training_plan)) {
-              trainingPlan = data.training_plan.map(stageArr => [
-                stageArr[0],
-                stageArr[1],
-                stageArr[2],
-                stageArr[3]
-              ]);
+              trainingPlan = data.training_plan.map(function(stageArr) {
+                return [stageArr[0], stageArr[1], stageArr[2], stageArr[3]];
+              });
               measuredPowerHistory = {};
               planStarted = false;
               planStartTime = 0;
@@ -458,35 +378,42 @@
           }
           else if (topic.endsWith("set_target_power")) {
             if (data.target_power !== undefined) {
-              activeTargetPower = data.target_power;
-              console.log("Active target power updated to: " + activeTargetPower);
+		//Dashboard.targetPower = data.target_power;
             }
-          }
-          else if (topic.endsWith("set_target_cadence")) {
+          } else if (topic.endsWith("set_measured_power")) {
+            if (data.measured_power !== undefined) {
+              // Store every measured power message per trainer.
+              if (data.uuid_trainer) {
+                var uuid = data.uuid_trainer;
+                if (!measuredPowerHistory[uuid]) {
+                  measuredPowerHistory[uuid] = [];
+                }
+                if (!riderFtpMap[uuid]) {
+                  riderFtpMap[uuid] = 100;
+                }
+                var percent = (data.measured_power / riderFtpMap[uuid]) * 100;
+                var currentElapsed = (Date.now() - planStartTime) / 1000;
+                measuredPowerHistory[uuid].push({ t: currentElapsed, percent: percent });
+              }
+              if (!data.uuid_trainer) {
+                  //Dashboard.currentPower = data.measured_power;
+              }
+            }
+          } else if (topic.endsWith("set_ftp")) {
+            if (data.ftp !== undefined) {
+              if (data.uuid_trainer) {
+                var uuid = data.uuid_trainer;
+                riderFtpMap[uuid] = data.ftp;
+              }
+		//Dashboard.trainerFtp = data.ftp;
+            }
+          } else if (topic.endsWith("set_target_cadence")) {
             if (data.target_cadence !== undefined) {
-              activeTargetCadence = data.target_cadence;
-              console.log("Active target cadence updated to: " + activeTargetCadence);
+		//Dashboard.targetCadence = data.target_cadence;
             }
-          }
-          else if (topic.endsWith("set_measured_power")) {
-            if (data.measured_power !== undefined && data.uuid_trainer) {
-              const uuid = data.uuid_trainer;
-              if (!measuredPowerHistory[uuid]) {
-                measuredPowerHistory[uuid] = [];
-              }
-              if (!riderFtpMap[uuid]) {
-                riderFtpMap[uuid] = 100;
-              }
-              const percent = (data.measured_power / riderFtpMap[uuid]) * 100;
-              const currentElapsed = (Date.now() - planStartTime) / 1000;
-              measuredPowerHistory[uuid].push({ t: currentElapsed, percent: percent });
-            }
-          }
-          else if (topic.endsWith("set_ftp")) {
-            if (data.ftp !== undefined && data.uuid_trainer) {
-              const uuid = data.uuid_trainer;
-              riderFtpMap[uuid] = data.ftp;
-              console.log("FTP for rider " + uuid + " updated to " + data.ftp);
+          } else if (topic.endsWith("set_measured_cadence")) {
+            if (data.measured_cadence !== undefined) {
+		//Dashboard.currentCadence = data.measured_cadence;
             }
           }
         } catch (err) {
@@ -498,7 +425,7 @@
         onSuccess: function() {
           console.log("Connected to MQTT broker");
           mqttClient.subscribe(APP_ID + "/#");
-          const listDevicesMsg = new Paho.MQTT.Message("");
+          var listDevicesMsg = new Paho.MQTT.Message("");
           listDevicesMsg.destinationName = APP_ID + "/list_devices";
           mqttClient.send(listDevicesMsg);
         },
@@ -507,8 +434,12 @@
         }
       });
       
-      // The team_dashboard simply displays incoming target messages; no target scheduling is done here.
+      // No FTP slider or pairing widgets are needed on team_dashboard.
       
+	//window.addEventListener("resize", function() { Dashboard.resize(); });
+      
+      // Expose Dashboard globally so that MQTT callbacks can access it.
+	//window.Dashboard = Dashboard;
     });
   </script>
 </body>

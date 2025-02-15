@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard with Dropdown Menu & Settings</title>
+  <style>
+    /* Basic reset and styling */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+    /* Menu styling */
+    #menu {
+      background-color: #333;
+      padding: 10px;
+      color: #fff;
+    }
+    #menu select {
+      background-color: #333;
+      color: #fff;
+      font-size: 16px;
+      border: none;
+      outline: none;
+      padding: 5px;
+    }
+    /* Iframe styling: adjust height as needed */
+    #contentFrame {
+      width: 100%;
+      height: calc(100vh - 50px); /* subtract height of menu */
+      border: none;
+    }
+    /* Modal (settings) styling */
+    .modal {
+      display: none; /* Hidden by default */
+      position: fixed;
+      z-index: 2000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+    }
+    .modal-content {
+      background-color: #fefefe;
+      margin: 10% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 300px;
+      border-radius: 5px;
+    }
+    .modal-content h3 {
+      margin-top: 0;
+    }
+    .modal-content label {
+      display: block;
+      margin-top: 10px;
+    }
+    .modal-content input {
+      width: 100%;
+      padding: 5px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+    .modal-content .button-group {
+      margin-top: 15px;
+      text-align: right;
+    }
+    .modal-content button {
+      padding: 5px 10px;
+      margin-left: 5px;
+      cursor: pointer;
+    }
+  </style>
+  <script>
+    // Function to either load a page into the iframe or show the settings modal
+    function openPage(url) {
+      if (url === "settings") {
+        document.getElementById('settingsModal').style.display = 'block';
+        // Reset the select to a default page after opening settings
+        document.getElementById('pageSelect').value = "./rider_dashboard.html";
+      } else {
+        document.getElementById('contentFrame').src = url;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      // If saved settings exist, update the form fields
+      const savedMqttHostname = localStorage.getItem('mqtt_hostname');
+      const savedMqttPort = localStorage.getItem('mqtt_port');
+      const savedAppID = localStorage.getItem('APP_ID');
+
+      if (savedMqttHostname) {
+        document.getElementById('mqtt_hostname').value = savedMqttHostname;
+      }
+      if (savedMqttPort) {
+        document.getElementById('mqtt_port').value = savedMqttPort;
+      }
+      if (savedAppID) {
+        document.getElementById('APP_ID').value = savedAppID;
+      }
+
+      // Settings form submission: save the settings to localStorage
+      document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const mqtt_hostname = document.getElementById('mqtt_hostname').value;
+        const mqtt_port = document.getElementById('mqtt_port').value;
+        const APP_ID = document.getElementById('APP_ID').value;
+        // Save these settings so other pages can access them
+        localStorage.setItem('mqtt_hostname', mqtt_hostname);
+        localStorage.setItem('mqtt_port', mqtt_port);
+        localStorage.setItem('APP_ID', APP_ID);
+        console.log('Settings saved:');
+        console.log('mqtt_hostname:', mqtt_hostname);
+        console.log('mqtt_port:', mqtt_port);
+        console.log('APP_ID:', APP_ID);
+        // Close the modal after saving
+        document.getElementById('settingsModal').style.display = 'none';
+      });
+      
+      // Close modal when cancel is clicked
+      document.getElementById('cancelBtn').addEventListener('click', function() {
+        document.getElementById('settingsModal').style.display = 'none';
+      });
+      
+      // Close modal if user clicks outside of modal content
+      window.addEventListener('click', function(e) {
+        const modal = document.getElementById('settingsModal');
+        if (e.target == modal) {
+          modal.style.display = 'none';
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+  <!-- Dropdown menu -->
+  <div id="menu">
+    <label for="pageSelect">Go to: </label>
+    <select id="pageSelect" onchange="openPage(this.value)">
+      <option value="./rider_dashboard.html">Rider Dashboard</option>
+      <option value="./example.html">Example</option>
+      <option value="./team_dashboard.html">Team Dashboard</option>
+      <option value="./coach_dashboard/workout.html">Workout</option>
+      <option value="./coach_dashboard/index.html">Coach Dashboard</option>
+      <option value="./dummy_rider.html">Dummy Rider</option>
+      <option value="./team_dashboard/README.html">More Info</option>
+      <option value="settings">Settings</option>
+    </select>
+  </div>
+
+  <!-- Iframe where pages will load -->
+  <iframe id="contentFrame" src="./rider_dashboard.html"></iframe>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <h3>Settings</h3>
+      <form id="settingsForm">
+        <label for="mqtt_hostname">MQTT Hostname:</label>
+        <input type="text" id="mqtt_hostname" name="mqtt_hostname" value="mqtt.eclipseprojects.io">
+
+        <label for="mqtt_port">MQTT Port:</label>
+        <input type="number" id="mqtt_port" name="mqtt_port" value="80">
+
+        <label for="APP_ID">APP ID:</label>
+        <input type="text" id="APP_ID" name="APP_ID" value="UniqueAppID_for_training_sessions">
+
+        <div class="button-group">
+          <button type="button" id="cancelBtn">Cancel</button>
+          <button type="submit" id="saveBtn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

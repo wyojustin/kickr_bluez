@@ -33,6 +33,16 @@
   </style>
   <!-- Include the Paho MQTT client -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <script src="/config.js"></script>
+  
+  <!-- Configuration Script (can be externalized as config.js) -->
+  <script>
+    // --- Log Config Values from config.js ---
+    console.log("Config values from config.js:");
+    console.log("MQTT Hostname:", Config.mqtt_hostname);
+    console.log("MQTT Port:", Config.mqtt_port);
+    console.log("APP_ID:", Config.APP_ID);
+  </script>
 </head>
 <body>
   <h1>Dummy Riders Simulation</h1>
@@ -81,7 +91,7 @@
       
       // Create a unique MQTT client for this dummy rider.
       var clientId = "dummy_rider_" + riderNum + "_" + Math.floor(Math.random() * 1000);
-      var mqttClient = new Paho.MQTT.Client("mqtt.eclipseprojects.io", 80, "/mqtt", clientId);
+      var mqttClient = new Paho.MQTT.Client(Config.mqtt_hostname, Config.mqtt_port, "/mqtt", clientId);
       
       mqttClient.onConnectionLost = function(responseObject) {
         console.log("Rider " + riderNum + " - Connection lost: " + responseObject.errorMessage);

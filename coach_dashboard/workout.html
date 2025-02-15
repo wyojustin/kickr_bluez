@@ -44,6 +44,16 @@
   </style>
   <!-- Include the Paho MQTT client library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <script src="/config.js"></script>
+  
+  <!-- Configuration Script (can be externalized as config.js) -->
+  <script>
+    // --- Log Config Values from config.js ---
+    console.log("Config values from config.js:");
+    console.log("MQTT Hostname:", Config.mqtt_hostname);
+    console.log("MQTT Port:", Config.mqtt_port);
+    console.log("APP_ID:", Config.APP_ID);
+  </script>
 </head>
 <body>
   <!-- Top Pane: Start Workout Button -->
@@ -60,11 +70,11 @@
     "use strict";
     
     // MQTT configuration
-    const APP_ID = "UniqueAppID_for_training_sessions";
+    const APP_ID = Config.APP_ID;
     const clientId = "coach_dashboard_" + Math.floor(Math.random() * 1000);
     
     // Create an MQTT client for the coach dashboard.
-    const mqttClient = new Paho.MQTT.Client("mqtt.eclipseprojects.io", 80, "/mqtt", clientId);
+    const mqttClient = new Paho.MQTT.Client(Config.mqtt_hostname, Config.mqtt_port, "/mqtt", clientId);
     
     mqttClient.onConnectionLost = function(responseObject) {
       console.log("Connection lost: " + responseObject.errorMessage);

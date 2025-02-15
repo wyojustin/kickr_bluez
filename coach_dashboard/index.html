@@ -47,6 +47,16 @@
 
   <!-- Include the Paho MQTT client library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+  <script src="/config.js"></script>
+  
+  <!-- Configuration Script (can be externalized as config.js) -->
+  <script>
+    // --- Log Config Values from config.js ---
+    console.log("Config values from config.js:");
+    console.log("MQTT Hostname:", Config.mqtt_hostname);
+    console.log("MQTT Port:", Config.mqtt_port);
+    console.log("APP_ID:", Config.APP_ID);
+  </script>
   <script>
     "use strict";
     
